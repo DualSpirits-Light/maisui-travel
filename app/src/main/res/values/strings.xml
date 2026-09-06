@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">麦穗旅序</string>
+    <string name="about_app">关于麦穗旅序</string>
+    <string name="backup_prefix">麦穗旅序备份-</string>
+</resources>
