@@ -12,7 +12,7 @@ import java.util.regex.*;
 final class PlaceImporter {
     static final int MAX_BYTES=2*1024*1024;
     static final class Place {
-        String name="",address="",openingHours="",rating="",sourceUrl="";
+        String name="",address="",openingHours="",rating="",sourceUrl="",poiId="",imageUrl="";
         Double lat,lon;
         String coordinateSystem="GCJ02";
     }
@@ -35,7 +35,8 @@ final class PlaceImporter {
         Place p=new Place();p.sourceUrl=uri.toString();Map<String,String> q=new HashMap<>();
         String query=uri.getRawQuery();
         if(query!=null)for(String part:query.split("&")){String[] bits=part.split("=",2);q.put(decode(bits[0]),bits.length==2?decode(bits[1]):"");}
-        p.name=first(q,"name","poiname","name1");p.address=first(q,"address","addr");
+        p.poiId=first(q,"poiid","poiId","id");String packed=q.get("p");if(packed!=null){String[] bits=packed.split(",",5);if(bits.length>=4){p.poiId=bits[0];setCoords(p,bits[1],bits[2]);p.name=bits[3];if(bits.length==5)p.address=bits[4];}}
+        String directName=first(q,"name","poiname","name1");if(!directName.isEmpty())p.name=directName;String directAddress=first(q,"address","addr");if(!directAddress.isEmpty())p.address=directAddress;
         p.openingHours=first(q,"opening_hours","opentime","business_time");p.rating=first(q,"rating","score");
         if("wgs84".equalsIgnoreCase(q.get("coordinate")))p.coordinateSystem="WGS84";
         String position=first(q,"position","location");
@@ -44,7 +45,7 @@ final class PlaceImporter {
         return p;
     }
     static Place resolve(String sharedText) throws IOException {
-        URI uri=extractUrl(sharedText);Place p=parseUrl(uri);merge(p,parseShareText(sharedText));
+        URI uri=extractUrl(sharedText);Place p=parseUrl(uri);Place copied=parseShareText(sharedText);if(p.name.isEmpty())p.name=copied.name;if(p.address.isEmpty())p.address=copied.address;
         // Complete coordinate links work offline; no page request is needed.
         if(p.lat!=null && !p.name.trim().isEmpty())return clean(p);
         for(int redirects=0;redirects<6;redirects++) {
@@ -92,9 +93,12 @@ final class PlaceImporter {
         }
         // Read structured POI fields only. Do not infer ratings/opening hours from arbitrary page text.
         String normalized=html.replace("\\\"","\"");
+        if(p.poiId.isEmpty())p.poiId=jsonString(normalized,"poiid","poiId");
+        if(p.imageUrl.isEmpty()){String photos=find(normalized,"\"photos\"\\s*:\\s*(\\[[\\s\\S]*?\\])");p.imageUrl=jsonString(photos,"url");}
+        if(p.imageUrl.isEmpty())p.imageUrl=find(html,"<meta[^>]*(?:property|name)=[\"']og:image[\"'][^>]*content=[\"']([^\"']+)");
         if(p.name.trim().isEmpty())p.name=jsonString(normalized,"poiname","poi_name");
         if(p.address.trim().isEmpty())p.address=jsonString(normalized,"address","poi_address");
-        if(p.openingHours.trim().isEmpty())p.openingHours=jsonString(normalized,"opentime","opening_hours","business_time");
+        if(p.openingHours.trim().isEmpty())p.openingHours=jsonString(normalized,"opentime_today","opentime_week","opentime","opening_hours","business_time");
         if(p.rating.trim().isEmpty())p.rating=jsonString(normalized,"rating","rating_score");
         if(p.rating.trim().isEmpty())p.rating=find(normalized,"\"(?:rating|rating_score)\"\\s*:\\s*(\\d+(?:\\.\\d+)?)");
         if(p.lat==null){String location=jsonString(normalized,"location");String[] coords=location.split(",");if(coords.length==2)setCoords(p,coords[1],coords[0]);}
@@ -104,7 +108,7 @@ final class PlaceImporter {
     static String first(Map<String,String> m,String...keys){for(String k:keys){String v=m.get(k);if(v!=null&&!v.trim().isEmpty())return v;}return "";}
     static String decode(String s){try{return URLDecoder.decode(s,"UTF-8");}catch(Exception ignored){return s;}}
     static void setCoords(Place p,String lat,String lon){try{double a=Double.parseDouble(lat),b=Double.parseDouble(lon);if(Double.isFinite(a)&&Double.isFinite(b)&&Math.abs(a)<=90&&Math.abs(b)<=180){p.lat=a;p.lon=b;}}catch(Exception ignored){}}
-    static void merge(Place target,Place source){if(!source.name.trim().isEmpty())target.name=source.name;if(!source.address.trim().isEmpty())target.address=source.address;if(!source.openingHours.isEmpty())target.openingHours=source.openingHours;if(!source.rating.isEmpty())target.rating=source.rating;if(source.lat!=null){target.lat=source.lat;target.lon=source.lon;target.coordinateSystem=source.coordinateSystem;}}
+    static void merge(Place target,Place source){if(!source.poiId.isEmpty())target.poiId=source.poiId;if(!source.imageUrl.isEmpty())target.imageUrl=source.imageUrl;if(!source.name.trim().isEmpty())target.name=source.name;if(!source.address.trim().isEmpty())target.address=source.address;if(!source.openingHours.isEmpty())target.openingHours=source.openingHours;if(!source.rating.isEmpty())target.rating=source.rating;if(source.lat!=null){target.lat=source.lat;target.lon=source.lon;target.coordinateSystem=source.coordinateSystem;}}
     static Place clean(Place p){p.name=clip(p.name,120);p.address=clip(p.address,300);p.openingHours=clip(p.openingHours,300);p.rating=clip(p.rating,30);return p;}
     static String clip(String s,int n){String clean=s.replace("&amp;","&").replace("&quot;","\"").replace("&#39;","'").replaceAll("<[^>]+>","").trim();return clean.substring(0,Math.min(n,clean.length()));}
 }

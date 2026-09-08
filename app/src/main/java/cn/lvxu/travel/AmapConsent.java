@@ -27,6 +27,9 @@ final class AmapConsent {
     }
 
     static void request(MainActivity activity, Runnable accepted) {
+        request(activity,accepted,()->{});
+    }
+    static void request(MainActivity activity,Runnable accepted,Runnable declined){
         if (granted(activity)) {
             accepted.run();
             return;
@@ -39,7 +42,7 @@ final class AmapConsent {
         AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle("启用高德地图")
                 .setMessage(message)
-                .setNegativeButton("暂不启用", null)
+                .setNegativeButton("暂不启用", (d,w)->declined.run()).setOnCancelListener(d->declined.run())
                 .setPositiveButton("同意并启用", (d, which) -> {
                     activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                             .putBoolean(AGREED, true).apply();

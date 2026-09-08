@@ -26,6 +26,9 @@ public final class ModelTest {
         bad=t.json();bad.getJSONArray("stops").getJSONObject(0).put("day",99);try{Trip.from(bad);throw new AssertionError("stop day");}catch(IllegalArgumentException ok){count++;}
         bad=t.json().put("budget",-1);try{Trip.from(bad);throw new AssertionError("budget");}catch(IllegalArgumentException ok){count++;}
         bad=t.json();bad.getJSONArray("stops").getJSONObject(0).put("time","9:00");try{Trip.from(bad);throw new AssertionError("time");}catch(java.time.DateTimeException|IllegalArgumentException ok){count++;}
+        t.stops.get(0).previewPhoto="media/places/cover.jpg";t.stops.get(0).notePhotos.add("media/photos/note.jpg");copy=Trip.from(t.json());check(copy.stops.get(0).previewPhoto.equals("media/places/cover.jpg")&&copy.stops.get(0).notePhotos.size()==1,"stop media roundtrip");
+        JSONObject oldStop=t.json();oldStop.getJSONArray("stops").getJSONObject(0).remove("previewPhoto");oldStop.getJSONArray("stops").getJSONObject(0).remove("notePhotos");check(Trip.from(oldStop).stops.get(0).previewPhoto.isEmpty(),"old stop remains compatible");
+        JSONObject badPhoto=t.json();badPhoto.getJSONArray("stops").getJSONObject(0).put("notePhotos",new JSONArray().put("../escape"));try{Trip.from(badPhoto);throw new AssertionError("note path traversal");}catch(IllegalArgumentException ok){count++;}
         System.out.println("PASS: "+count+" model assertions");
     }
 }

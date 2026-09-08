@@ -96,7 +96,7 @@ final class AmapPlaceSearch {
             query.setPageSize(PAGE_SIZE);
             query.setPageNum(1);
             query.setCityLimit(!city.isEmpty());
-            query.setShowFields(new PoiSearchV2.ShowFields(PoiSearchV2.ShowFields.BUSINESS));
+            query.setShowFields(new PoiSearchV2.ShowFields(PoiSearchV2.ShowFields.BUSINESS | PoiSearchV2.ShowFields.PHOTOS));
             PoiSearchV2 search = new PoiSearchV2(activity, query);
             search.setOnPoiSearchListener(new Listener(generation, targetTrip, targetDay));
             search.searchPOIAsyn();
@@ -163,7 +163,7 @@ final class AmapPlaceSearch {
         }
         Business business = poi.getBusiness();
         if (business != null) {
-            stop.openingHours = clip(safe(business.getOpentimeToday()), 300);
+            stop.openingHours = clip(safe(business.getOpentimeToday()), 300);if(stop.openingHours.isEmpty())stop.openingHours=clip(safe(business.getOpentimeWeek()),300);
             String rawRating = safe(business.getmRating());
             try {
                 if (!rawRating.isEmpty()) {
@@ -172,7 +172,8 @@ final class AmapPlaceSearch {
                 }
             } catch (NumberFormatException ignored) { }
         }
-        activity.stopEditorDraft(stop);
+        PlaceImporter.Place info=new PlaceImporter.Place();AmapDetails.fill(info,poi);
+        activity.runJob("正在读取地点照片…",()->{try{stop.previewPhoto=PlaceMediaUi.download(activity,info.imageUrl);}catch(Exception ignored){}return null;},()->activity.stopEditorDraft(stop));
     }
 
     private boolean alive() {
