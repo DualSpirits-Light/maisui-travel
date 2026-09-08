@@ -1,62 +1,64 @@
-# 麦穗旅序 · Android 个人旅行规划
+# 麦穗旅序 0.2.0
 
-一个原生 Android 离线旅行规划 MVP，Java + Android 系统控件，无运行时第三方依赖。支持 Android 8.0（API 26）及以上。
+个人旅行规划 Android App，支持 Android 8.0 及以上。无须注册账号即可使用本地规划、账本、清单、教程与电子打卡卡片。
 
-## 已实现
+## 使用与功能
 
-- 多个旅行的创建、修改、删除，设置目的地、出发日期、天数和总预算。
-- 每天的地点新增、修改、删除与跨天移动；按开始时间排序，提示相邻安排时间重叠。
-- 地点的停留时间、抵达交通方式、预计费用及备注。
-- 总预算、实际账单及六类支出汇总；预计费用与实际支出分开计算。
-- 行李 / 待办清单与完成状态。
-- 原子文件写入，离线保存；JSON 备份导出、校验后合并导入。
-- 调用外部地图搜索地点；通过 Android 分享面板分享文字行程。
+安装 `麦穗旅序-0.2.0.apk`，已有 0.1.x 版本可使用相同签名覆盖安装，首次启动会迁移旧版行程。首次使用通过杭州示例认识日程、预算、清单和地图；设置中可重新打开教程。
 
-首次启动提供可编辑的杭州三日示例。地点、时间和费用均为演示安排，非实时旅游资料。
+- 首页快速规划：四步设置城市、日期、天数、预算和交通，创建旅行。杭州可使用示例地点，其他城市生成可编辑日程框架，不伪装为 AI 或实时推荐。
+- 我的旅行：点标题进入，长按卡片或标题确认删除；支持多个独立旅行。
+- 日程：按天、时间排序，交通、停留时长、费用、地址、营业时间、评分和备注；提示时间重叠。
+- 地图：优先使用高德 Android 地图 SDK，按天绘制编号标记、行程连线与两点直线距离，支持长按地图添加地点；用户同意高德隐私条款后才初始化 SDK。未配置 Key 或 SDK 不可用时回退至内置 Leaflet / OpenStreetMap 地图。连线和距离是直线展示，不等同于道路导航。
+- 高德导入：粘贴或从高德分享官方地点链接；识别链接或页面实际包含的名称、位置、营业时间、评分。动态页面未提供的资料保留为空，可编辑补充；不保证所有短链接均能返回完整详情。地点按钮可打开高德 App，未安装时打开浏览器。
+- 预算：自定义分类与颜色，新增、修改、删除并迁移原账单；记录支出日期时间；切换分类饼图和日期折线图，显示图例、金额和日期轴。
+- 清单：多个独立清单，项目完成状态、普通/重要/紧急评级、备注、自定义键值字段、图片与图片移除。删除清单时项目转移到其他清单。
+- 打卡：系统相机或选图，前台定位与系统逆地理编码，时间和心情合成电子卡片；预览后保存至相册。拒绝定位或无定位服务时可手填地点，不编造经纬度。
+- 首页背景：从本机选图、裁剪、随机 Picsum 图片或指定 HTTPS 图片地址。头像与昵称保存在本机。
+- 设置：右侧抽屉，WebDAV、本地 ZIP 备份、个性化、离线授权码、版本检查；主题支持浅色、深色、跟随系统，底栏可长按拖动并设置可见性。
+- WebDAV：用户填写 HTTPS 文件夹、用户名和密码后测试连接，手动上传完整备份或选择云端备份恢复。凭据由 Android Keystore 加密存储；凭据不进入备份。
+- 更新：每天首次启动检查配置的 HTTPS GitHub Release 信息源，也可手动检查。下载后校验摘要、包名与签名，交由系统确认安装。
 
-## 使用
+## 数据与边界
 
-将 `麦穗旅序-0.1.1.apk` 传到安卓手机并打开安装。按手机提示允许当前文件来源安装应用。第一版是开发测试签名，尚未上架应用商店。
+本地使用原生 SQLite 事务保存版本化数据快照，旧 JSON 数据首次读取时迁移。金额使用整数分。完整 ZIP 包含行程、引用图片及非敏感个性化配置；恢复采用合并方式，重复行程 ID 转为新 ID。原有数据不会因为重复导入而被覆盖。卸载会清除本机数据，请先备份。
 
-1. 在“旅行”创建自己的旅行，或打开示例。
-2. 在“行程”选择日期，添加地点，设置时间和交通；编辑地点可移动到其他天。
-3. 在“预算”记录实际账单，调整总预算。
-4. 在“清单”勾选待办。右上角“备份”可以导出所有旅行。
+此版本没有账号后端、在线 Token 登录、支付或实时路线服务。离线授权码用于后续权益铺垫，基础规划功能保持可用；授权码不是在线支付系统。现有 GitHub 仓库为私有仓库，匿名更新检查不能读取其 Release，需要先配置用户可访问的 HTTPS Release 镜像/元数据源。不会将 GitHub 私人 Token 放进 APK。
 
-备份导入会保留现有行程，并将导入内容作为新旅行添加。重复导入会产生副本。卸载应用会删除本机数据，请提前导出备份。
+首次运行只在实际使用时请求定位。相册选择与文件备份使用系统文件选择器；拍照调用系统相机，无须在本 App 中申请相机权限。Android 10 及以上通过 MediaStore 保存卡片，较旧版本通过系统文件保存面板。网络权限用于 WebDAV、地图、网络图片、高德分享页和版本检查；安装更新需要系统安装权限及用户确认。
 
-## 构建
+## 源码与构建
 
-Android Studio 打开本目录，安装 SDK Platform 35 与 Build Tools 35.0.0，使用 JDK 17 或 21。Gradle 插件固定为 8.9.2，对应 Gradle 8.11.1。首次 Gradle 同步需要访问 Google Maven 与 Maven Central。工程未附 Gradle Wrapper 二进制；可以使用本机 Gradle 8.11.1，或以下已验证的独立构建脚本。
+Java 17 + Android 系统 View，编译/目标 API 35，最低 API 26。原生地图使用高德 Android SDK，WebDAV 使用 OkHttp 4.12.0；依赖版本与摘要记录在 `dependencies-lock.json`。Leaflet JS/CSS 作为地图回退资源本地打包，许可见 `app/src/main/assets/map/LICENSE.txt` 与 `THIRD-PARTY-NOTICES.md`。本版本继续使用 SQLite 与系统 View，保持现有数据可升级。
+
+Android Studio 打开本目录，使用 Android Gradle Plugin 8.9.2 / Gradle 8.11.1、JDK 17 或 21，以及 Android SDK Platform 35、Build Tools 35.0.0。也可用已验证的独立构建脚本，无须下载 Gradle：
 
 ```powershell
-./build-apk.ps1 -SdkPath '你的Android SDK路径' -JdkPath '你的JDK路径'
+./build-apk.ps1 -SdkPath 'Android SDK 路径' -JdkPath 'JDK 路径' -SigningKey '本机签名密钥路径' -AmapKeyFile '仅含高德 Android Key 的本机文本文件'
 ```
 
-脚本用 SDK 自带的 AAPT2、D8、zipalign 和 apksigner 编译并签名，默认输出到 `build-manual/lvxu-debug.apk`。默认调试密钥只用于本地开发。正式分发应配置自己保管的发布签名；更换签名不能覆盖安装已有版本，先导出备份再卸载安装。
+默认输出 `build-manual/lvxu-debug.apk`。构建脚本会按锁定摘要获取高德和网络依赖，也可通过 `-AmapSdkPath`、`-NetworkLibDirectory` 使用本机副本。高德 Key、GitHub Token、WebDAV 凭据和签名私钥均未包含在源码包中；保持同一 Android 签名才可覆盖升级。当前安装包沿用此前开发测试签名。后续商用发布应由开发者管理发布密钥、服务协议与授权发行流程。
 
-源码入口：`app/src/main/java/cn/lvxu/travel/MainActivity.java`；数据模型：`Trip.java`；本地存储：`TripStore.java`。金额以人民币分存储，避免浮点误差。备份有版本标识、5 MB 大小限制及字段范围校验。
+核心入口 `MainActivity.java`；数据 `Trip.java` / `TripStore.java`；模块控制器 `FinanceUi`、`ChecklistUi`、`CheckinUi`、`SettingsUi`、`MapUi`；权限与系统入口见 `AndroidManifest.xml`。授权发行与更新元数据格式见 `SETTINGS-INTEGRATION.md`。
 
-## 测试
+## 验证
 
-`tests/cn/lvxu/travel/ModelTest.java` 是可独立运行的模型回归测试；运行时在类路径中加入公开的 `org.json:json:20240303`，编译 `Trip.java` 和该测试类后执行 `cn.lvxu.travel.ModelTest`。该依赖仅供桌面测试，应用运行时使用 Android 自带 JSON。
+模型测试 `tests/cn/lvxu/travel/ModelTest.java`，地图及导入测试 `GeoImportTest.java`。桌面测试使用 `org.json:json:20240303`；App 使用系统 JSON。
 
-实际验证结果见同目录 `TEST-RESULTS.md`。
+`test-android.ps1` 构建并运行独立仪器测试 APK，仅允许模拟器：验证 SQLite、备份合并、媒体路径、拒绝恶意备份，以及超过 CursorWindow 大小的行程数据读取。模拟器须先安装同签名的当前 App。
 
-## 后续 API
+```powershell
+./test-android.ps1 -SdkPath 'SDK 路径' -JdkPath 'JDK 路径' -AppBuildDirectory '构建输出路径' -SigningKey '开发测试密钥路径'
+```
 
-当前版本无需任何 API 或令牌，也不申请定位或网络权限。
+实际检查记录见 `TEST-RESULTS.md`。
 
-- 如需内嵌地图、自动地点补全、公交/驾车路线，可选择地图提供商后接入对应 Android SDK。Android 包名为 `cn.lvxu.travel`；申请时应使用未来实际分发版本的签名指纹，不能直接沿用任意调试签名。
-- AI 行程生成需要后端代理及模型 API。模型密钥放在服务端环境变量中，不放进 APK。
-- 云同步或多人协作需要账号、后端存储和冲突处理，是后续独立扩展。
+## 官方参考
 
-目前不含实时交通、地图内嵌、票价查询、AI 生成或云同步。地图搜索由手机外部应用处理，网络及数据行为由相应应用决定。
+- [Android 系统文件选择与存储访问](https://developer.android.com/training/data-storage/shared/documents-files)
+- [Android 共享媒体存储](https://developer.android.com/training/data-storage/shared/media)
+- [高德 Android 地图 SDK](https://lbs.amap.com/api/android-sdk/summary)
+- [高德 URI API](https://lbs.amap.com/api/uri-api/summary)
+- [Leaflet](https://leafletjs.com/) 与 [OpenStreetMap](https://www.openstreetmap.org/copyright)
 
-## 参考
-
-功能组织参考 [圆周旅迹官网](https://www.pitravel.cn/index.html) 与其公开产品介绍，未使用其商标、界面素材或代码。构建版本参考 [Android 官方 AGP 8.9 兼容说明](https://developer.android.com/build/releases/agp-8-9-0-release-notes)。旅序界面与代码为本项目独立实现。
-
-## 0.1.1 名称更新
-
-显示名称正式改为“麦穗旅序”，包名及本地存储位置不变。该版本仅包含命名更新；账号、WebDAV、Compose/Room 迁移等属于后续重构方案，尚未集成至此 APK。
+功能组织曾参考圆周旅迹的公开介绍，未使用其代码、商标或界面素材。

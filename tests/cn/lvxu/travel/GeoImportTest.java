@@ -1,0 +1,23 @@
+package cn.lvxu.travel;
+import java.net.URI;
+public final class GeoImportTest {
+    static int checks;
+    static void check(boolean v,String message){checks++;if(!v)throw new AssertionError(message);}
+    public static void main(String[] args)throws Exception{
+        check(GeoMath.meters(0,0,0,0)==0,"same point");
+        check(Math.abs(GeoMath.meters(0,0,0,1)-111195)<2,"equatorial degree");
+        check(Double.isFinite(GeoMath.meters(90,0,-90,180)),"antipodes");
+        double[] gcj=GeoMath.gcj(30.25,120.14),wgs=GeoMath.wgs(gcj[0],gcj[1],"GCJ02");
+        check(GeoMath.meters(30.25,120.14,wgs[0],wgs[1])<1,"coordinate inverse");
+        double[] london=GeoMath.wgs(51.5,-.12,"GCJ02");check(london[0]==51.5&&london[1]==-.12,"outside mainland");
+        PlaceImporter.Place p=PlaceImporter.resolve("杭州 https://uri.amap.com/marker?position=120.14,30.25&name=%E8%A5%BF%E6%B9%96&opentime=09%3A00-18%3A00&rating=4.7");
+        check(p.name.equals("西湖")&&p.lat==30.25&&p.lon==120.14,"offline coordinate link");check(p.openingHours.equals("09:00-18:00")&&p.rating.equals("4.7"),"share metadata");
+        check(!PlaceImporter.allowed(URI.create("https://amap.com.evil.test/a")),"host suffix spoof");
+        check(!PlaceImporter.allowed(URI.create("https://user@amap.com/a")),"userinfo rejection");
+        check(!PlaceImporter.allowed(URI.create("https://amap.com:8443/a")),"port rejection");
+        PlaceImporter.Place bad=PlaceImporter.parseUrl(URI.create("https://uri.amap.com/marker?position=NaN,91"));check(bad.lat==null,"invalid coordinates");
+        PlaceImporter.Place html=new PlaceImporter.Place();PlaceImporter.parseHtml(html,"<title>灵隐寺 - 高德地图</title><script>{\"address\":\"灵隐路\",\"rating\":4.8,\"opentime\":\"08:00-17:00\"}</script>");check(html.name.equals("灵隐寺")&&html.rating.equals("4.8"),"structured page metadata");
+        PlaceImporter.Place empty=new PlaceImporter.Place();PlaceImporter.parseHtml(empty,"<title>高德地图</title><p>评分 5 营业时间不详</p>");check(empty.name.isEmpty()&&empty.rating.isEmpty()&&empty.openingHours.isEmpty(),"never invent missing metadata");
+        System.out.println("GeoImportTest: "+checks+" checks passed");
+    }
+}

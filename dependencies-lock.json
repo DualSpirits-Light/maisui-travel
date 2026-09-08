@@ -1,0 +1,32 @@
+[
+  {
+    "url": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.jar",
+    "sha256": "ACE2A10DC8E2D5FD34925ECAC03E4988B2C0F851650C94B8CEF49BA1BD111478",
+    "file": "annotations-13.0.jar"
+  },
+  {
+    "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar",
+    "sha256": "042A1CD1AC976CDCFE5EB63F1D8E0B0B892C9248E15A69C8CFBA495D546EA52A",
+    "file": "kotlin-stdlib-1.8.21.jar"
+  },
+  {
+    "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar",
+    "sha256": "33D148DB0E11DEBD0D90677D28242BCED907F9C77730000FD597867089039D86",
+    "file": "kotlin-stdlib-jdk7-1.8.21.jar"
+  },
+  {
+    "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar",
+    "sha256": "3DB752A30074F06EE6C57984AA6F27DA44F4D2BBC7F5442651F6988F1CB2B7D7",
+    "file": "kotlin-stdlib-jdk8-1.8.21.jar"
+  },
+  {
+    "url": "https://repo.maven.apache.org/maven2/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar",
+    "sha256": "B1050081B14BB7A3A7E55A4D3EF01B5DCFABC453B4573A4FC019767191D5F4E0",
+    "file": "okhttp-4.12.0.jar"
+  },
+  {
+    "url": "https://repo.maven.apache.org/maven2/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar",
+    "sha256": "67543F0736FC422AE927ED0E504B98BC5E269FDA0D3500579337CB713DA28412",
+    "file": "okio-jvm-3.6.0.jar"
+  }
+]

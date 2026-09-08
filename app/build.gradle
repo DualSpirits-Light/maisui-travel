@@ -1,4 +1,23 @@
 plugins { id 'com.android.application' }
+def amapVersion = '11.2.100_loc11.2.100_sea9.8.1'
+def localConfig = new Properties()
+def localConfigFile = rootProject.file('local.properties')
+if (localConfigFile.exists()) localConfigFile.withInputStream { localConfig.load(it) }
+configurations { amapDistribution }
+dependencies { amapDistribution "com.amap.api:3dmap-location-search:${amapVersion}" }
+def unpackAmap = tasks.register('unpackAmap', Sync) {
+    from { configurations.amapDistribution.collect { zipTree(it) } }
+    include 'assets/**', 'lib/**'
+    into layout.buildDirectory.dir('amap/distribution')
+}
+def amapClasses = tasks.register('amapClasses', Jar) {
+    from { configurations.amapDistribution.collect { zipTree(it) } }
+    include '**/*.class'
+    archiveFileName = 'amap-classes.jar'
+    destinationDirectory = layout.buildDirectory.dir('amap')
+}
+dependencies { implementation files(amapClasses) }
+dependencies { implementation 'com.squareup.okhttp3:okhttp:4.12.0' }
 android {
     namespace 'cn.lvxu.travel'
     compileSdk 35
@@ -6,9 +25,14 @@ android {
         applicationId 'cn.lvxu.travel'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '0.1.1'
+        versionCode 3
+        versionName '0.2.0'
+        manifestPlaceholders = [AMAP_ANDROID_KEY: localConfig.getProperty('amap.android.key', System.getenv('AMAP_ANDROID_KEY') ?: '')]
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets.main.assets.srcDir layout.buildDirectory.dir('amap/distribution/assets')
+    sourceSets.main.jniLibs.srcDir layout.buildDirectory.dir('amap/distribution/lib')
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
+tasks.named('preBuild').configure { dependsOn unpackAmap, amapClasses }
