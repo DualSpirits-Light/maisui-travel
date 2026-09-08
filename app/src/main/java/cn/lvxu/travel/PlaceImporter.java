@@ -24,7 +24,7 @@ final class PlaceImporter {
     }
     static URI extractUrl(String text) {
         if(text==null||text.length()>12000)throw new IllegalArgumentException("分享文字为空或过长");
-        Matcher m=Pattern.compile("https?://[^\\s<>\\\"，。；）】]+",Pattern.CASE_INSENSITIVE).matcher(text);
+        Matcher m=Pattern.compile("https?://[^\\s<>\\\"'“”‘’，。；）】\\]\\}\\)]+",Pattern.CASE_INSENSITIVE).matcher(text);
         if(!m.find())throw new IllegalArgumentException("请粘贴高德分享的 https 链接");
         URI uri=URI.create(m.group().replace("&amp;","&"));
         if("http".equalsIgnoreCase(uri.getScheme()))uri=URI.create("https"+uri.toString().substring(4));
@@ -44,7 +44,7 @@ final class PlaceImporter {
         return p;
     }
     static Place resolve(String sharedText) throws IOException {
-        URI uri=extractUrl(sharedText);Place p=parseUrl(uri);
+        URI uri=extractUrl(sharedText);Place p=parseUrl(uri);merge(p,parseShareText(sharedText));
         // Complete coordinate links work offline; no page request is needed.
         if(p.lat!=null && !p.name.trim().isEmpty())return clean(p);
         for(int redirects=0;redirects<6;redirects++) {
@@ -62,15 +62,26 @@ final class PlaceImporter {
                     if(p.lat!=null&&!p.name.trim().isEmpty())return clean(p);
                     continue;
                 }
-                if(code!=200)throw new IOException("高德分享页面暂不可用（"+code+"），可以手动填写");
+                if(code!=200){if(!p.name.trim().isEmpty())return clean(p);throw new IOException("高德分享页面暂不可用（"+code+"），可以手动填写");}
                 String html;
                 try(InputStream in=conn.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
                     byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1){if(out.size()+n>MAX_BYTES)throw new IOException("分享页面过大");out.write(buf,0,n);}html=out.toString("UTF-8");
                 }
                 parseHtml(p,html);return clean(p);
-            } finally {conn.disconnect();}
+            } catch(IOException e){if(!p.name.trim().isEmpty())return clean(p);throw e;} finally {conn.disconnect();}
         }
         throw new IOException("分享链接跳转次数过多，请使用完整地点链接");
+    }
+    /** Parses the human-readable text that AMap copies above a short URL. */
+    static Place parseShareText(String sharedText) {
+        Place p=new Place();if(sharedText==null)return p;
+        for(String raw:sharedText.replace('\r','\n').split("\\n")){
+            String line=raw.trim();if(line.isEmpty()||line.contains("http://")||line.contains("https://"))continue;
+            boolean priceOrCategory=line.startsWith("¥")||line.startsWith("￥")||line.matches(".*(?:/人|人均).*" );
+            if(p.name.isEmpty()&&!priceOrCategory){p.name=line;continue;}
+            if(p.address.isEmpty()&&!priceOrCategory)p.address=line;
+        }
+        return p;
     }
     static void parseHtml(Place p,String html) {
         if(p.name.trim().isEmpty()) {

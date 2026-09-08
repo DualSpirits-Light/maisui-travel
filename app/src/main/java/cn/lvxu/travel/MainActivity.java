@@ -22,13 +22,14 @@ public class MainActivity extends Activity {
         LINE=0xffE2E6DC,PALE=0xffE7EDDF,ORANGE=0xffAC592F,SURFACE=0xffFFFFFF;
     ArrayList<Trip> trips=new ArrayList<>();
     TripStore store;Trip active;AppPrefs prefs;int page=0,day=0;
-    LinearLayout root,body;boolean loadFailed=false,mapMode=false;
+    LinearLayout root,body;boolean loadFailed=false,mapMode=false,showArchived=false;
     MediaController media;SettingsUi settings;
     private FinanceUi finance;private ChecklistUi lists;private CheckinUi checkins;
     private AmapUi mapUi;private TutorialUi tutorial;
     private final ExecutorService jobs=Executors.newSingleThreadExecutor();
     private final ArrayList<Dialog> progressDialogs=new ArrayList<>();
     private boolean destroyed;
+    private float swipeDownX,swipeDownY;private boolean pageSwipeBlocked;
     interface ImageCallback{void selected(String relativeMediaPath);}
 
     @Override public void onCreate(Bundle state){
@@ -37,11 +38,19 @@ public class MainActivity extends Activity {
         catch(Exception e){loadFailed=true;new AlertDialog.Builder(this).setTitle("无法读取本地行程").setMessage("原文件已保留。请重启重试，或通过设置中的备份功能恢复。").setPositiveButton("知道了",null).show();}
         if(!trips.isEmpty())active=trips.get(0);
         if(state!=null){page=state.getInt("page");day=state.getInt("day");mapMode=state.getBoolean("mapMode");for(Trip t:trips)if(t.id.equals(state.getString("trip")))active=t;}
+        else page=pageIndex(prefs.defaultHome());
         media=new MediaController(this);if(state!=null)media.restoreState(state);
         settings=new SettingsUi(this);finance=new FinanceUi(this);lists=new ChecklistUi(this);checkins=new CheckinUi(this,media);tutorial=new TutorialUi(this);
         render();root.post(()->{if(!prefs.tutorialDone()&&!loadFailed)showTutorial();else settings.checkDailyUpdate();});handleSharedPlace(getIntent());
     }
     @Override public void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleSharedPlace(intent);}
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        if(event.getActionMasked()==MotionEvent.ACTION_DOWN){swipeDownX=event.getRawX();swipeDownY=event.getRawY();pageSwipeBlocked=blocksPageSwipe(root,event.getRawX(),event.getRawY())||(page==1&&mapMode);}
+        else if(event.getActionMasked()==MotionEvent.ACTION_UP&&!pageSwipeBlocked){float dx=event.getRawX()-swipeDownX,dy=event.getRawY()-swipeDownY;if(Math.abs(dx)>=dp(72)&&Math.abs(dx)>Math.abs(dy)*1.4f){if(swipePage(dx<0?1:-1)){return true;}}}
+        return super.dispatchTouchEvent(event);
+    }
+    private boolean swipePage(int direction){ArrayList<Integer> pages=new ArrayList<>();for(String id:prefs.navOrder())if(prefs.navVisible(id)){int value=pageIndex(id);if(!pages.contains(value))pages.add(value);}if(pages.isEmpty())return false;int at=pages.indexOf(page);if(at<0)return false;int next=at+direction;if(next<0||next>=pages.size())return false;page=pages.get(next);render();return true;}
+    private boolean blocksPageSwipe(View view,float rawX,float rawY){if(view==null||view.getVisibility()!=View.VISIBLE)return false;int[] location=new int[2];view.getLocationOnScreen(location);if(rawX<location[0]||rawX>location[0]+view.getWidth()||rawY<location[1]||rawY>location[1]+view.getHeight())return false;Object tag=view.getTag();if("trip-card".equals(tag)||view instanceof HorizontalScrollView||view.getClass().getName().contains("MapView"))return true;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=group.getChildCount()-1;i>=0;i--)if(blocksPageSwipe(group.getChildAt(i),rawX,rawY))return true;}return false;}
     private void handleSharedPlace(Intent intent){if(intent!=null&&Intent.ACTION_SEND.equals(intent.getAction())){String value=intent.getStringExtra(Intent.EXTRA_TEXT);if(value!=null&&(value.contains("amap.com")||value.contains("gaode.com")))root.post(()->importPlace(value));}}
     @Override public void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("page",page);state.putInt("day",day);state.putBoolean("mapMode",mapMode);if(active!=null)state.putString("trip",active.id);if(media!=null)media.saveState(state);}
     @Override public void onDestroy(){destroyed=true;if(mapUi!=null)mapUi.destroy();for(Dialog d:progressDialogs)if(d.isShowing())d.dismiss();jobs.shutdown();super.onDestroy();}
@@ -60,7 +69,7 @@ public class MainActivity extends Activity {
     void pad(View v,int p){v.setPadding(dp(p),dp(p),dp(p),dp(p));}
     TextView action(String label,boolean primary,Runnable fn){TextView v=bold(label,14,primary?Color.WHITE:INK);v.setGravity(Gravity.CENTER);v.setMinHeight(dp(48));v.setPadding(dp(14),dp(10),dp(14),dp(10));v.setBackground(shape(primary?GREEN:PALE,14));v.setContentDescription(label);v.setFocusable(true);v.setOnClickListener(w->fn.run());return v;}
     void pair(LinearLayout l,View left,View right){LinearLayout r=row();r.addView(left,new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.leftMargin=dp(10);r.addView(right,p);l.addView(r);}
-    LinearLayout card(LinearLayout parent){LinearLayout c=col();pad(c,18);c.setBackground(shape(SURFACE,20));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(12);parent.addView(c,p);return c;}
+    LinearLayout card(LinearLayout parent){LinearLayout c=col();pad(c,18);c.setBackground(shape(SURFACE,20));if(parent!=null){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(12);parent.addView(c,p);}return c;}
     void heading(String title,String subtitle){body.addView(bold(title,27,INK));space(body,8);body.addView(text(subtitle,13,MUTED));space(body,20);}
     void section(String title){space(body,12);body.addView(bold(title,18,INK));space(body,12);}
     void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
@@ -71,7 +80,7 @@ public class MainActivity extends Activity {
     void pickImage(ImageCallback callback){media.pick(callback);}
     File mediaFile(String relative){return MediaFiles.file(this,relative);}
     boolean save(){if(loadFailed){toast("请先恢复本地数据，再进行修改");return false;}try{store.save(trips);return true;}catch(Exception e){toast("保存失败，此次修改未保存，请检查存储空间");return false;}}
-    void changed(){if(!save()&&!loadFailed){try{String id=active==null?"":active.id;trips=store.read();active=trips.isEmpty()?null:trips.get(0);for(Trip t:trips)if(t.id.equals(id))active=t;}catch(Exception e){loadFailed=true;}}render();}
+    void changed(){TripStore.sort(trips);if(!save()&&!loadFailed){try{String id=active==null?"":active.id;trips=store.read();active=trips.isEmpty()?null:trips.get(0);for(Trip t:trips)if(t.id.equals(id))active=t;}catch(Exception e){loadFailed=true;}}render();}
 
     void render(){
         if(destroyed)return;applyPalette();if(mapUi!=null){mapUi.destroy();mapUi=null;}
@@ -81,7 +90,7 @@ public class MainActivity extends Activity {
         LinearLayout top=row();top.setPadding(dp(22),dp(10),dp(22),dp(10));top.addView(bold(getString(R.string.app_name),22,INK),new LinearLayout.LayoutParams(0,-2,1));View avatar;
         File avatarFile=null;try{avatarFile=mediaFile(prefs.avatar());}catch(Exception ignored){}
         if(avatarFile!=null&&avatarFile.isFile()){ImageView image=new ImageView(this);image.setImageURI(Uri.fromFile(avatarFile));image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(shape(PALE,24));image.setClipToOutline(true);avatar=image;}
-        else{String nick=prefs.nickname();TextView v=bold(nick.isEmpty()?"我":nick.substring(0,1),16,INK);v.setGravity(Gravity.CENTER);v.setBackground(shape(PALE,24));avatar=v;}
+        else{ImageView image=new ImageView(this);image.setImageResource(R.drawable.avatar_wheat);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(shape(PALE,24));image.setClipToOutline(true);avatar=image;}
         avatar.setContentDescription("设置");avatar.setFocusable(true);avatar.setOnClickListener(v->settings.open());top.addView(avatar,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(top);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);body=col();body.setPadding(dp(22),dp(12),dp(22),dp(24));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(page==0)home();else if(active==null){heading("下一程，从这里开始","新建一个旅行，慢慢填满期待。");body.addView(action("＋ 创建旅行",true,()->tripEditor(null)));}
@@ -96,8 +105,20 @@ public class MainActivity extends Activity {
         if(coverFile!=null&&coverFile.isFile()){ImageView image=new ImageView(this);image.setImageURI(Uri.fromFile(coverFile));image.setScaleType(ImageView.ScaleType.CENTER_CROP);cover=image;}else cover=new Landscape(this);
         cover.setContentDescription("设置首页背景");cover.setOnClickListener(v->media.showBackgroundPicker());hero.addView(cover,new LinearLayout.LayoutParams(-1,dp(160)));LinearLayout copy=col();pad(copy,18);copy.addView(bold("去山野，也去日常之外",21,INK));space(copy,8);copy.addView(text("把灵感变成下一段旅程。",13,MUTED));space(copy,15);pair(copy,action("快速规划 →",true,()->new QuickPlanner(this).start()),action("＋ 新建旅行",false,()->tripEditor(null)));hero.addView(copy);body.addView(hero);section("我的旅行  ·  "+trips.size());
         if(trips.isEmpty())body.addView(text("还没有行程。创建第一段旅行吧。",14,MUTED));
-        for(Trip t:trips){LinearLayout c=card(body);c.addView(text(t.city+" / "+t.days+" DAYS",12,MUTED));space(c,10);TextView title=bold(t.title,20,INK);title.setContentDescription("打开："+t.title);c.addView(title);space(c,8);c.addView(text(t.start+" 出发 · "+t.stops.size()+" 个地点",13,MUTED));View.OnLongClickListener delete=v->{confirm("删除“"+t.title+"”？账单、清单和打卡记录也会移除。",()->deleteTrip(t));return true;};c.setOnClickListener(v->openTrip(t));c.setOnLongClickListener(delete);title.setOnClickListener(v->openTrip(t));title.setOnLongClickListener(delete);space(c,14);pair(c,action("打开行程 →",true,()->openTrip(t)),action("编辑旅行",false,()->tripEditor(t)));}
-        space(body,4);body.addView(text("长按旅行卡片可删除 · 点击标题进入行程\n数据保存在本机，WebDAV 备份由你主动连接。",12,MUTED));
+        TextView archived=action(showArchived?"返回我的旅行":"已归档旅行",false,()->{showArchived=!showArchived;render();});body.addView(archived);
+        for(Trip t:trips){if(t.archived!=showArchived)continue;addTripCard(t);}
+        space(body,4);body.addView(text("向左滑动卡片可删除、置顶、归档或收藏。",12,MUTED));
+    }
+    void addTripCard(Trip t){
+        FrameLayout frame=new FrameLayout(this);frame.setTag("trip-card");frame.setPadding(0,0,0,dp(12));
+        LinearLayout actions=row();actions.setGravity(Gravity.CENTER_VERTICAL);actions.setBackground(shape(PALE,20));
+        TextView del=action("删除",false,()->confirm("删除“"+t.title+"”？",()->deleteTrip(t)));
+        TextView pin=action(t.pinned?"取消置顶":"置顶",false,()->{t.pinned=!t.pinned;t.updatedAt=System.currentTimeMillis();changed();});
+        TextView arc=action(t.archived?"取消归档":"归档",false,()->{t.archived=!t.archived;t.updatedAt=System.currentTimeMillis();changed();});
+        TextView fav=action(t.favorite?"取消收藏":"收藏",false,()->{t.favorite=!t.favorite;t.updatedAt=System.currentTimeMillis();changed();});
+        actions.addView(del,new LinearLayout.LayoutParams(0,-1,1));actions.addView(pin,new LinearLayout.LayoutParams(0,-1,1));actions.addView(arc,new LinearLayout.LayoutParams(0,-1,1));actions.addView(fav,new LinearLayout.LayoutParams(0,-1,1));FrameLayout.LayoutParams actionParams=new FrameLayout.LayoutParams(dp(320),-1,Gravity.RIGHT);frame.addView(actions,actionParams);
+        LinearLayout c=card(null);c.addView(text(t.city+" / "+t.days+" DAYS",12,MUTED));space(c,10);TextView title=bold((t.favorite?"★ ":"")+t.title,20,INK);title.setContentDescription("打开："+t.title);c.addView(title);space(c,8);c.addView(text(t.start+" 出发 · "+t.stops.size()+" 个地点",13,MUTED));c.setOnClickListener(v->openTrip(t));space(c,14);pair(c,action("打开行程 →",true,()->openTrip(t)),action("编辑旅行",false,()->tripEditor(t)));
+        frame.addView(c,new FrameLayout.LayoutParams(-1,-2));final float[] down={0,0};final long[] pressedAt={0};c.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN){down[0]=e.getX();down[1]=e.getY();pressedAt[0]=System.currentTimeMillis();return true;}if(e.getAction()==MotionEvent.ACTION_UP){float dx=e.getX()-down[0],dy=e.getY()-down[1];if(-dx>dp(45)&&Math.abs(dx)>Math.abs(dy)){c.animate().translationX(-dp(320)).setDuration(180).start();return true;}if(dx>dp(45)&&Math.abs(dx)>Math.abs(dy)){c.animate().translationX(0).setDuration(180).start();return true;}if(Math.abs(dx)<dp(12)&&Math.abs(dy)<dp(12)){if(System.currentTimeMillis()-pressedAt[0]>=550)confirm("删除“"+t.title+"”？账单、清单和打卡记录也会移除。",()->deleteTrip(t));else v.performClick();}return true;}return true;});body.addView(frame,new LinearLayout.LayoutParams(-1,-2));
     }
     void deleteTrip(Trip t){trips.remove(t);if(active==t){active=trips.isEmpty()?null:trips.get(0);day=0;}changed();}
     void tripLabel(){TextView v=text(active.title+" ▾",13,INK);v.setPadding(0,dp(8),0,dp(16));v.setContentDescription("切换旅行");v.setOnClickListener(w->{String[] names=new String[trips.size()];for(int i=0;i<names.length;i++)names[i]=trips.get(i).title;new AlertDialog.Builder(this).setTitle("切换旅行").setItems(names,(d,i)->{active=trips.get(i);day=0;render();}).show();});body.addView(v);}

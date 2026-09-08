@@ -12,6 +12,9 @@ public final class GeoImportTest {
         double[] london=GeoMath.wgs(51.5,-.12,"GCJ02");check(london[0]==51.5&&london[1]==-.12,"outside mainland");
         PlaceImporter.Place p=PlaceImporter.resolve("杭州 https://uri.amap.com/marker?position=120.14,30.25&name=%E8%A5%BF%E6%B9%96&opentime=09%3A00-18%3A00&rating=4.7");
         check(p.name.equals("西湖")&&p.lat==30.25&&p.lon==120.14,"offline coordinate link");check(p.openingHours.equals("09:00-18:00")&&p.rating.equals("4.7"),"share metadata");
+        String copied="伊兴面片(五泉山店)\n¥35/人·小吃快餐\n火车站西路788号\n[https://surl.amap.com/OrouvESa5g”](https://surl.amap.com/OrouvESa5g” )";
+        URI shortUri=PlaceImporter.extractUrl(copied);check(shortUri.toString().equals("https://surl.amap.com/OrouvESa5g"),"curly quote short link extraction");
+        PlaceImporter.Place copiedFields=PlaceImporter.parseShareText(copied);check(copiedFields.name.equals("伊兴面片(五泉山店)")&&copiedFields.address.equals("火车站西路788号"),"copied AMap title and address");
         check(!PlaceImporter.allowed(URI.create("https://amap.com.evil.test/a")),"host suffix spoof");
         check(!PlaceImporter.allowed(URI.create("https://user@amap.com/a")),"userinfo rejection");
         check(!PlaceImporter.allowed(URI.create("https://amap.com:8443/a")),"port rejection");
