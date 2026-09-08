@@ -8,9 +8,11 @@
     <queries><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="androidamap"/></intent></queries>
     <application android:label="@string/app_name" android:theme="@style/AppTheme" android:icon="@drawable/ic_launcher" android:allowBackup="false" android:supportsRtl="true">
         <meta-data android:name="com.amap.api.v2.apikey" android:value="${AMAP_ANDROID_KEY}"/>
-        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
+        <activity android:name=".MainActivity" android:launchMode="singleTask" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
             <intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>
+            <intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="application/zip"/><data android:mimeType="application/x-zip-compressed"/></intent-filter>
+            <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="content"/><data android:mimeType="application/zip"/><data android:mimeType="application/x-zip-compressed"/></intent-filter>
         </activity>
         <provider android:name=".AppFileProvider" android:authorities="cn.lvxu.travel.files" android:exported="false" android:grantUriPermissions="true"/>
     </application>

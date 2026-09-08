@@ -7,14 +7,17 @@ import java.util.*;
 /** Durable, non-secret application preferences. */
 public final class AppPrefs {
     private static final String[] NAV={"home","itinerary","budget","checklist","checkin"};
-    private final SharedPreferences p;
-    public AppPrefs(Context c){p=c.getSharedPreferences("app-prefs-v2",Context.MODE_PRIVATE);validateActivation();}
+    private final SharedPreferences p,modes;
+    public AppPrefs(Context c){p=c.getSharedPreferences("app-prefs-v2",Context.MODE_PRIVATE);modes=c.getSharedPreferences("quick_planner_transport_modes",Context.MODE_PRIVATE);validateActivation();}
     public String theme(){return p.getString("theme","light");}
     public void setTheme(String v){p.edit().putString("theme",("dark".equals(v)||"system".equals(v))?v:"light").apply();}
     public String background(){return p.getString("background","");}
     public void setBackground(String v){p.edit().putString("background",safe(v,500)).apply();}
     public String nickname(){return p.getString("nickname","");}
     public void setNickname(String v){p.edit().putString("nickname",safe(v,40)).apply();}
+    public static final String DEFAULT_SLOGAN="把期待，排进日历。";
+    public String slogan(){return p.getString("slogan",DEFAULT_SLOGAN);}
+    public void setSlogan(String v){String clean=safe(v,80);p.edit().putString("slogan",clean.isEmpty()?DEFAULT_SLOGAN:clean).apply();}
     public String avatar(){return p.getString("avatar","");}
     public void setAvatar(String v){p.edit().putString("avatar",safe(v,500)).apply();}
     /** Page shown when the app starts. MainActivity maps these stable ids to pages. */
@@ -42,8 +45,8 @@ public final class AppPrefs {
     public void setNavOrder(List<String> values){JSONArray a=new JSONArray();for(String x:values)if(validNav(x)&&!contains(a,x))a.put(x);for(String x:NAV)if(!contains(a,x))a.put(x);p.edit().putString("navOrder",a.toString()).apply();}
     public boolean navVisible(String id){return validNav(id)&&p.getBoolean("navVisible."+id,true);}
     public void setNavVisible(String id,boolean value){if(validNav(id))p.edit().putBoolean("navVisible."+id,value).apply();}
-    JSONObject exportJson()throws JSONException {JSONObject o=new JSONObject().put("theme",theme()).put("background",background()).put("nickname",nickname()).put("avatar",avatar()).put("showPlaceCoordinates",showPlaceCoordinates()).put("defaultHome",defaultHome()).put("tutorial",tutorialDone());JSONArray n=new JSONArray();for(String x:navOrder())n.put(new JSONObject().put("id",x).put("visible",navVisible(x)));return o.put("nav",n);}
-    void importJson(JSONObject o)throws JSONException {setTheme(o.optString("theme","light"));setBackground(o.optString("background",""));setNickname(o.optString("nickname",""));setAvatar(o.optString("avatar",""));setShowPlaceCoordinates(o.optBoolean("showPlaceCoordinates",false));setDefaultHome(o.optString("defaultHome","home"));setTutorialDone(o.optBoolean("tutorial",false));JSONArray n=o.optJSONArray("nav");if(n!=null){ArrayList<String> order=new ArrayList<>();for(int i=0;i<n.length();i++){JSONObject x=n.getJSONObject(i);String id=x.getString("id");if(validNav(id)){order.add(id);setNavVisible(id,x.optBoolean("visible",true));}}setNavOrder(order);}}
+    JSONObject exportJson()throws JSONException {JSONArray custom=new JSONArray();for(String value:new TreeSet<>(modes.getStringSet("custom_modes",Collections.emptySet())))custom.put(value);JSONObject o=new JSONObject().put("theme",theme()).put("background",background()).put("nickname",nickname()).put("slogan",slogan()).put("customTransportModes",custom).put("avatar",avatar()).put("showPlaceCoordinates",showPlaceCoordinates()).put("defaultHome",defaultHome()).put("tutorial",tutorialDone());JSONArray n=new JSONArray();for(String x:navOrder())n.put(new JSONObject().put("id",x).put("visible",navVisible(x)));return o.put("nav",n);}
+    void importJson(JSONObject o)throws JSONException {JSONArray custom=o.optJSONArray("customTransportModes");if(custom!=null){LinkedHashSet<String> values=new LinkedHashSet<>();for(int i=0;i<Math.min(custom.length(),50);i++){String value=custom.optString(i,"").trim();if(!value.isEmpty()&&value.length()<=20)values.add(value);}modes.edit().putStringSet("custom_modes",values).apply();}setTheme(o.optString("theme","light"));setBackground(o.optString("background",""));setNickname(o.optString("nickname",""));setSlogan(o.optString("slogan",DEFAULT_SLOGAN));setAvatar(o.optString("avatar",""));setShowPlaceCoordinates(o.optBoolean("showPlaceCoordinates",false));setDefaultHome(o.optString("defaultHome","home"));setTutorialDone(o.optBoolean("tutorial",false));JSONArray n=o.optJSONArray("nav");if(n!=null){ArrayList<String> order=new ArrayList<>();for(int i=0;i<n.length();i++){JSONObject x=n.getJSONObject(i);String id=x.getString("id");if(validNav(id)){order.add(id);setNavVisible(id,x.optBoolean("visible",true));}}setNavOrder(order);}}
     private static boolean validNav(String x){for(String n:NAV)if(n.equals(x))return true;return false;}
     private static boolean validHome(String x){return validNav(x);}
     private static boolean contains(JSONArray a,String x){for(int i=0;i<a.length();i++)if(x.equals(a.optString(i)))return true;return false;}
