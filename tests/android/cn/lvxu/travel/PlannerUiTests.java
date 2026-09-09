@@ -31,6 +31,7 @@ public final class PlannerUiTests {
             instrumentation.runOnMainSync(()->{planner[0]=new QuickPlanner(host);planner[0].start();});
             await(ui,"快速规划 · 1/4",true);
             AlertDialog wizard=dialogOf(planner[0]);
+            checks.that((wizard.getWindow().getAttributes().flags & android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)==0,"wizard permits soft keyboard");
 
             AccessibilityNodeInfo firstPrevious=await(ui,"上一步",false);
             checks.that(firstPrevious==null||!firstPrevious.isVisibleToUser(),"planner first page hides previous");

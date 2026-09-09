@@ -39,7 +39,7 @@ $manifest=(Get-Content -LiteralPath "$PSScriptRoot\app\src\main\AndroidManifest.
 $manifest=$manifest.Replace('${AMAP_ANDROID_KEY}',[string]$amapKeyValue)
 [IO.File]::WriteAllText("$BuildDirectory\AndroidManifest.xml",$manifest,[Text.UTF8Encoding]::new($false))
 Run-Tool "$bt\aapt2.exe" @('compile','--dir',"$PSScriptRoot\app\src\main\res",'-o',"$BuildDirectory\resources.zip")
-Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code','6','--version-name','0.2.3','-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
+Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code','7','--version-name','0.2.4','-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
 $sources=@(Get-ChildItem "$PSScriptRoot\app\src\main\java","$BuildDirectory\generated" -Filter *.java -Recurse | ForEach-Object FullName)
 # Windows AAPT2 can emit backslashes in nested asset names. Android AssetManager
 # looks up forward-slash paths, so normalize ZIP names before signing.

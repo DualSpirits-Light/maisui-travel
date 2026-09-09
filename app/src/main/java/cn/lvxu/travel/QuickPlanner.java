@@ -3,6 +3,7 @@ import android.app.AlertDialog;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.*;
 import java.time.LocalDate;
 
@@ -23,8 +24,11 @@ final class QuickPlanner {
   LinearLayout buttons=new LinearLayout(a);buttons.setOrientation(LinearLayout.HORIZONTAL);buttons.setGravity(Gravity.CENTER);previousButton=a.action("上一步",false,this::previous);TextView cancel=a.action("取消",false,()->dialog.dismiss());nextButton=a.action("下一步",true,this::next);
   LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(0,-2,1);buttonParams.setMargins(a.dp(4),a.dp(4),a.dp(4),a.dp(4));buttons.addView(previousButton,buttonParams);buttons.addView(cancel,new LinearLayout.LayoutParams(buttonParams));buttons.addView(nextButton,new LinearLayout.LayoutParams(buttonParams));root.addView(buttons);
   dialog=new AlertDialog.Builder(a).setTitle("快速规划 · 1/4 基本信息").setView(root).create();
-  dialog.setOnShowListener(v->renderStep());
+  dialog.setOnShowListener(v->{renderStep();enableTextInput();});
   dialog.setOnDismissListener(v->generation++);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setBackgroundDrawable(a.shape(MainActivity.SURFACE,24));
+ }
+ private void enableTextInput(){
+  if(dialog.getWindow()!=null){dialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM|WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);}
  }
  private void renderStep(){
   if(dialog==null||!dialog.isShowing())return;page.removeAllViews();a.pad(page,22);

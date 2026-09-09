@@ -26,6 +26,9 @@ public final class GeoImportTest {
         check(Math.abs(packed.lat-36.042715)<.000001&&Math.abs(packed.lon-103.826299)<.000001,"packed latitude longitude order");
         PlaceImporter.Place rich=new PlaceImporter.Place();PlaceImporter.parseHtml(rich,"<script>{\"business\":{\"rating\":\"4.5\",\"opentime_today\":\"10:30-21:30\"},\"photos\":[{\"url\":\"https://store.is.autonavi.com/first.jpg\"},{\"url\":\"https://store.is.autonavi.com/second.jpg\"}]}</script>");
         check(rich.rating.equals("4.5")&&rich.openingHours.equals("10:30-21:30"),"business detail fields");check(rich.imageUrl.endsWith("first.jpg"),"first photo preserved");
+        URI folder=URI.create("https://guinness.autonavi.com/activity/2020CommonLanding/index.html?schema="+java.net.URLEncoder.encode("amapuri://ajx_favorites/folder?data="+java.net.URLEncoder.encode("{\"ugcId\":\"1234567890\",\"forceCustom\":true}","UTF-8"),"UTF-8"));
+        check(PlaceImporter.favoriteFolderId(folder).equals("1234567890"),"favorite folder identifier decoded");
+        boolean folderRejected=false;try{PlaceImporter.resolve(folder.toString());}catch(java.io.IOException expected){folderRejected=expected.getMessage().contains("收藏夹");}check(folderRejected,"favorite folder never becomes a fake place");
         System.out.println("GeoImportTest: "+checks+" checks passed");
     }
 }

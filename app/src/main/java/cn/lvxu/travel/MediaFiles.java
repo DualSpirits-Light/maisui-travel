@@ -71,6 +71,15 @@ public final class MediaFiles {
         if(!temp.renameTo(target)){temp.delete();throw new IOException("Cannot finish image");}return relative;
     }
 
+    /** Keeps the full image bytes and EXIF; selecting a place photo never crops it. */
+    public String importOriginal(Uri uri)throws IOException {
+        byte[] bytes=readBounded(uri);BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+        if(bounds.outWidth<=0||bounds.outHeight<=0)throw new IOException("无法识别这张图片");
+        String mime=bounds.outMimeType==null?"":bounds.outMimeType;String suffix=mime.equals("image/png")?".png":mime.equals("image/webp")?".webp":mime.equals("image/gif")?".gif":mime.equals("image/bmp")?".bmp":".jpg";
+        String path=newPath("photos",suffix);File target=file(path),tmp=new File(target.getParentFile(),target.getName()+".tmp");
+        try{try(FileOutputStream out=new FileOutputStream(tmp)){out.write(bytes);out.getFD().sync();}if(!tmp.renameTo(target))throw new IOException("无法保存照片");return path;}finally{tmp.delete();}
+    }
+
     private byte[] readBounded(Uri uri) throws IOException {
         try(InputStream in=context.getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
             if(in==null)throw new IOException("Cannot open image");byte[] block=new byte[16384];int n,total=0;

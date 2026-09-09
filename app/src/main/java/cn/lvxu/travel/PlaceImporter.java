@@ -20,8 +20,13 @@ final class PlaceImporter {
         String host=u.getHost();
         return "https".equalsIgnoreCase(u.getScheme()) && host!=null && u.getUserInfo()==null &&
             (u.getPort()==-1 || u.getPort()==443) &&
-            (host.equalsIgnoreCase("amap.com")||host.toLowerCase(Locale.ROOT).endsWith(".amap.com")||host.equalsIgnoreCase("gaode.com")||host.toLowerCase(Locale.ROOT).endsWith(".gaode.com"));
+            (host.equalsIgnoreCase("amap.com")||host.toLowerCase(Locale.ROOT).endsWith(".amap.com")||host.equalsIgnoreCase("gaode.com")||host.toLowerCase(Locale.ROOT).endsWith(".gaode.com")||(host.equalsIgnoreCase("guinness.autonavi.com")&&uriPath(u).startsWith("/activity/2020CommonLanding/")));
     }
+    private static String uriPath(URI u){return u.getPath()==null?"":u.getPath();}
+    static String favoriteFolderId(URI uri){
+        if(!allowed(uri))return "";try{String schema=queryValue(uri,"schema");if(!schema.startsWith("amapuri://ajx_favorites/folder?"))return "";JSONObject data=new JSONObject(queryValue(URI.create(schema),"data"));String id=data.optString("ugcId","");return id.matches("[0-9]{1,40}")?id:"";}catch(Exception ignored){return "";}
+    }
+    private static String queryValue(URI uri,String key){String query=uri.getRawQuery();if(query!=null)for(String part:query.split("&")){String[] bits=part.split("=",2);if(decode(bits[0]).equals(key))return bits.length==2?decode(bits[1]):"";}return "";}
     static URI extractUrl(String text) {
         if(text==null||text.length()>12000)throw new IllegalArgumentException("分享文字为空或过长");
         Matcher m=Pattern.compile("https?://[^\\s<>\\\"'“”‘’，。；）】\\]\\}\\)]+",Pattern.CASE_INSENSITIVE).matcher(text);
@@ -45,7 +50,7 @@ final class PlaceImporter {
         return p;
     }
     static Place resolve(String sharedText) throws IOException {
-        URI uri=extractUrl(sharedText);Place p=parseUrl(uri);Place copied=parseShareText(sharedText);if(p.name.isEmpty())p.name=copied.name;if(p.address.isEmpty())p.address=copied.address;
+        URI uri=extractUrl(sharedText);if(!favoriteFolderId(uri).isEmpty())throw new IOException("已识别为高德收藏夹，但该分享页未提供地点、备注和照片列表。请在高德逐个分享地点链接导入。");Place p=parseUrl(uri);Place copied=parseShareText(sharedText);if(p.name.isEmpty())p.name=copied.name;if(p.address.isEmpty())p.address=copied.address;
         // Complete coordinate links work offline; no page request is needed.
         if(p.lat!=null && !p.name.trim().isEmpty())return clean(p);
         for(int redirects=0;redirects<6;redirects++) {
