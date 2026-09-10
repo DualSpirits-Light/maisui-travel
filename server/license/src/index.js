@@ -7,6 +7,7 @@ import {
   sha256,
   signLease,
 } from "./crypto.js";
+import { adminAsset } from "./admin-page.js";
 
 const PRODUCT = "maisui-travel";
 const MAX_BODY_BYTES = 4096;
@@ -242,6 +243,10 @@ async function unbindDevice(licenseId, deviceId, env) {
 
 export async function handleRequest(request, env) {
   const url = ensureHttps(request);
+  if (request.method === "GET") {
+    const asset = adminAsset(url.pathname);
+    if (asset) return asset;
+  }
   if (request.method === "POST" && url.pathname === "/v1/activate") return activate(request, env);
   if (request.method === "POST" && url.pathname === "/v1/refresh") return refresh(request, env);
   if (url.pathname.startsWith("/admin/")) {

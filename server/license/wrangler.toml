@@ -2,6 +2,8 @@ name = "maisui-license"
 main = "src/index.js"
 compatibility_date = "2026-08-01"
 account_id = "84a010bcceae67cd238416872ecdc072"
+workers_dev = false
+routes = [{ pattern = "license.zjm0929.cn", custom_domain = true }]
 
 [vars]
 DEFAULT_LEASE_DAYS = "7"
