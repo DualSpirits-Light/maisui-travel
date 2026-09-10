@@ -1,0 +1,15 @@
+{
+  "name": "maisui-license-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply maisui-license --local",
+    "db:migrate:remote": "wrangler d1 migrations apply maisui-license --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

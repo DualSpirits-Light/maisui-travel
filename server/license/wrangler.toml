@@ -1,0 +1,19 @@
+name = "maisui-license"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+account_id = "84a010bcceae67cd238416872ecdc072"
+
+[vars]
+DEFAULT_LEASE_DAYS = "7"
+DEFAULT_MAX_DEVICES = "1"
+PUBLIC_RATE_LIMIT_PER_MINUTE = "30"
+ADMIN_RATE_LIMIT_PER_MINUTE = "60"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maisui-license"
+database_id = "84fc1616-599f-46fa-b86c-db944817f4ee"
+migrations_dir = "migrations"
+
+[secrets]
+required = ["ADMIN_TOKEN", "CODE_PEPPER", "SIGNING_PRIVATE_KEY_PKCS8"]

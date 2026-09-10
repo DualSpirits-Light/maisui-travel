@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
     private void handleSharedPlace(Intent intent){if(intent!=null&&Intent.ACTION_SEND.equals(intent.getAction())){String value=intent.getStringExtra(Intent.EXTRA_TEXT);if(value!=null&&(value.contains("amap.com")||value.contains("gaode.com")||value.contains("guinness.autonavi.com")))root.post(()->importPlace(value));}}
     @Override public void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("page",page);state.putInt("day",day);state.putBoolean("mapMode",mapMode);if(active!=null)state.putString("trip",active.id);if(media!=null)media.saveState(state);}
     @Override public void onDestroy(){destroyed=true;if(mapUi!=null)mapUi.destroy();for(Dialog d:progressDialogs)if(d.isShowing())d.dismiss();jobs.shutdown();super.onDestroy();}
-    @Override protected void onResume(){super.onResume();if(mapUi!=null)mapUi.resume();}
+    @Override protected void onResume(){super.onResume();if(mapUi!=null)mapUi.resume();if(prefs!=null&&prefs.cloud.hasLicense())jobs.execute(()->{boolean before=prefs.paid();prefs.cloud.refreshIfDue();if(before!=prefs.paid())runOnUiThread(()->{if(!destroyed)render();});});}
     @Override protected void onPause(){if(mapUi!=null)mapUi.pause();super.onPause();}
     @Override public void onBackPressed(){if(closeTripSwipes(root))return;if(page!=0){page=0;render();}else if(showArchived){showArchived=false;render();}else super.onBackPressed();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);media.onPermissions(request,permissions,results);}

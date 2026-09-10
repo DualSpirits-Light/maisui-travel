@@ -32,4 +32,8 @@ try{Invoke-Checked "$bt/aapt.exe" @('add',"$testBuild/unsigned.apk",'classes.dex
 Invoke-Checked "$bt/zipalign.exe" @('-f','4',"$testBuild/unsigned.apk","$testBuild/aligned.apk")
 Invoke-Checked "$bt/apksigner.bat" @('sign','--ks',$SigningKey,'--ks-pass','pass:android','--key-pass','pass:android','--out',"$testBuild/tests.apk","$testBuild/aligned.apk")
 Invoke-Checked "$SdkPath/platform-tools/adb.exe" @('-s',$Device,'install','-r',"$testBuild/tests.apk")
-Invoke-Checked "$SdkPath/platform-tools/adb.exe" @('-s',$Device,'shell','am','instrument','-w','cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation')
+$testOutput = & "$SdkPath/platform-tools/adb.exe" -s $Device shell am instrument -w cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation
+$testExit = $LASTEXITCODE
+$testOutput | Write-Output
+if ($testExit -ne 0 -or ($testOutput -match 'FAIL:|INSTRUMENTATION_FAILED|Process crashed')) { throw 'Android integration tests failed' }
+if (-not ($testOutput -match 'PASS:')) { throw 'Android integration tests did not report success' }

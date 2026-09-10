@@ -8,7 +8,8 @@ import java.util.*;
 public final class AppPrefs {
     private static final String[] NAV={"home","itinerary","budget","checklist","checkin"};
     private final SharedPreferences p,modes;
-    public AppPrefs(Context c){p=c.getSharedPreferences("app-prefs-v2",Context.MODE_PRIVATE);modes=c.getSharedPreferences("quick_planner_transport_modes",Context.MODE_PRIVATE);validateActivation();}
+    final CloudLicenseService cloud;
+    public AppPrefs(Context c){p=c.getSharedPreferences("app-prefs-v2",Context.MODE_PRIVATE);modes=c.getSharedPreferences("quick_planner_transport_modes",Context.MODE_PRIVATE);cloud=new CloudLicenseService(c);validateActivation();}
     public String theme(){return p.getString("theme","light");}
     public void setTheme(String v){p.edit().putString("theme",("dark".equals(v)||"system".equals(v))?v:"light").apply();}
     public String background(){return p.getString("background","");}
@@ -33,7 +34,7 @@ public final class AppPrefs {
     public void setLastUpdateCheck(long v){p.edit().putLong("lastUpdateCheck",v).apply();}
     public String lastUpdateDay(){return p.getString("lastUpdateDay","");}
     public void setLastUpdateDay(String v){p.edit().putString("lastUpdateDay",safe(v,10)).apply();}
-    public boolean paid(){validateActivation();return p.getBoolean("paid",false);}
+    public boolean paid(){if(cloud.hasLicense())return cloud.isValid();validateActivation();return p.getBoolean("paid",false);}
     public String activationSubject(){return p.getString("activationSubject","");}
     public String activationExpires(){return p.getString("activationExpires","");}
     void setActivation(String subject,String expires){p.edit().putString("activationSubject",safe(subject,120)).putString("activationExpires",safe(expires,10)).putBoolean("paid",true).commit();}
