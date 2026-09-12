@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
@@ -86,6 +87,36 @@ public final class CloudLicenseTests {
             expectFailure(service::refresh, "transport error reported as failure"); checks++;
             check(service.isValid(), "transport error preserves valid lease"); checks++;
 
+            fixture.mode = Mode.ONLINE_ONLY;
+            service.activate("ONLINE-ONLY");
+            check(service.isValid(), "online-only activation permits current session"); checks++;
+            CloudLicenseService restarted = new CloudLicenseService(context, client, ENDPOINT, publicKey);
+            check(!restarted.isValid(), "online-only authorization is not granted across restart"); checks++;
+            restarted.refresh();
+            check(restarted.isValid(), "successful online-only refresh permits current session"); checks++;
+            restarted.endForegroundSession();
+            check(!restarted.isValid(), "leaving foreground invalidates online-only session"); checks++;
+            restarted.refresh();
+            fixture.mode = Mode.IO_FAILURE;
+            expectFailure(restarted::refresh, "online-only network failure reported"); checks++;
+            check(!restarted.isValid(), "network failure invalidates online-only session"); checks++;
+            fixture.mode = Mode.NORMAL;
+            service.activate("RESTORE-POSITIVE");
+
+            fixture.mode = Mode.SHORT_FINITE;
+            service.activate("SHORT-FINITE");
+            Thread.sleep(1100); // Enter the renewal window rather than refreshing immediately after activation.
+            int beforeShortRefresh = fixture.requests.get();
+            check(service.refreshIfDue() && fixture.requests.get() == beforeShortRefresh + 1,
+                    "short finite lease refreshes near expiry without hourly gate"); checks++;
+            fixture.mode = Mode.IO_FAILURE;
+            expectFailure(service::refresh, "short finite network failure reported"); checks++;
+            check(service.isValid(), "short finite network failure preserves unexpired lease"); checks++;
+            Thread.sleep(2200);
+            check(!service.isValid(), "short finite lease eventually expires after network failure"); checks++;
+            fixture.mode = Mode.NORMAL;
+            service.activate("RESTORE-AFTER-SHORT");
+
             fixture.mode = Mode.BLOCK_REFRESH;
             fixture.entered = new CountDownLatch(1);
             fixture.release = new CountDownLatch(1);
@@ -111,6 +142,7 @@ public final class CloudLicenseTests {
             fixture.mode = Mode.STATUS_403;
             expectFailure(service::refresh, "403 reported as failure"); checks++;
             check(service.hasLicense() && !service.isValid(), "403 clears token but retains cloud state"); checks++;
+            check(service.statusText().contains("冻结"), "frozen 403 is reflected in status text"); checks++;
             return checks;
         } finally {
             restore(preferences, saved);
@@ -146,7 +178,8 @@ public final class CloudLicenseTests {
 
     private enum Mode {
         NORMAL, WRONG_DEVICE, WRONG_PRODUCT, BAD_SIGNATURE, EXPIRED,
-        REFRESH_LICENSE_MISMATCH, STATUS_503, IO_FAILURE, STATUS_401, STATUS_403, BLOCK_REFRESH
+        REFRESH_LICENSE_MISMATCH, STATUS_503, IO_FAILURE, STATUS_401, STATUS_403, BLOCK_REFRESH,
+        ONLINE_ONLY, SHORT_FINITE
     }
 
     private static final class Fixture implements Interceptor {
@@ -154,11 +187,13 @@ public final class CloudLicenseTests {
         final KeyPair pair;
         volatile Mode mode = Mode.NORMAL;
         volatile CountDownLatch entered, release;
+        final AtomicInteger requests = new AtomicInteger();
 
         Fixture(KeyPair pair) { this.pair = pair; }
 
         @Override public Response intercept(Chain chain) throws IOException {
             Request request = chain.request();
+            requests.incrementAndGet();
             if (mode == Mode.IO_FAILURE) throw new IOException("simulated transport failure");
             if (mode == Mode.BLOCK_REFRESH && request.url().encodedPath().endsWith("/v1/refresh")) {
                 entered.countDown();
@@ -171,17 +206,23 @@ public final class CloudLicenseTests {
             }
             if (mode == Mode.STATUS_503) return response(request, 503, error("SERVER_MISCONFIGURED"));
             if (mode == Mode.STATUS_401) return response(request, 401, error("INVALID_CREDENTIAL"));
-            if (mode == Mode.STATUS_403) return response(request, 403, error("LICENSE_REVOKED"));
+            if (mode == Mode.STATUS_403) return response(request, 403, error("LICENSE_FROZEN"));
             try {
                 JSONObject input = requestJson(request);
+                if (input.optInt("clientVersion", 0) != 31)
+                    throw new IOException("clientVersion 31 missing");
                 String device = input.getString("deviceId");
                 boolean refresh = request.url().encodedPath().endsWith("/v1/refresh");
                 String product = mode == Mode.WRONG_PRODUCT ? "another-product" : LicenseConfig.PRODUCT;
                 String tokenDevice = mode == Mode.WRONG_DEVICE ? "00000000-0000-0000-0000-000000000000" : device;
                 long now = System.currentTimeMillis() / 1000L;
                 long issued = mode == Mode.EXPIRED ? now - 700 : now - 5;
-                long expires = mode == Mode.EXPIRED ? now - 1 : now + 7 * 24 * 60 * 60 - 5;
-                String token = token(product, "lic-1", tokenDevice, issued, expires);
+                long offlineSeconds = mode == Mode.ONLINE_ONLY ? 0
+                        : mode == Mode.SHORT_FINITE ? 2 : 7 * 24 * 60 * 60;
+                long expires = mode == Mode.EXPIRED ? now - 1
+                        : mode == Mode.ONLINE_ONLY ? now + 60
+                        : mode == Mode.SHORT_FINITE ? now + 2 : now + offlineSeconds - 5;
+                String token = token(product, "lic-1", tokenDevice, issued, expires, offlineSeconds);
                 if (mode == Mode.BAD_SIGNATURE) {
                     int start = token.lastIndexOf('.') + 1;
                     token = token.substring(0, start) + (token.charAt(start) == 'A' ? 'B' : 'A')
@@ -194,13 +235,14 @@ public final class CloudLicenseTests {
             } catch (Exception e) { throw new IOException("fixture failure", e); }
         }
 
-        private String token(String product, String licenseId, String device, long issued, long expires) throws Exception {
+        private String token(String product, String licenseId, String device, long issued, long expires,
+                             long offlineSeconds) throws Exception {
             JSONObject payload = new JSONObject().put("product", product).put("licenseId", licenseId)
                     .put("deviceId", device).put("subject", "Test User")
-                    .put("issuedAt", issued).put("expiresAt", expires);
+                    .put("issuedAt", issued).put("expiresAt", expires).put("offlineSeconds", offlineSeconds);
             String encoded = java.util.Base64.getUrlEncoder().withoutPadding()
                     .encodeToString(payload.toString().getBytes(StandardCharsets.UTF_8));
-            String signed = "MS2." + encoded;
+            String signed = "MS3." + encoded;
             Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initSign(pair.getPrivate());
             signature.update(signed.getBytes(StandardCharsets.US_ASCII));

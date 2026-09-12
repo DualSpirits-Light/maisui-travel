@@ -31,7 +31,7 @@ final class LicenseUi {
             content.addView(a.bold("已激活 · 离线授权",18,MainActivity.GREEN));
             content.addView(a.text(a.prefs.activationSubject(),13,MainActivity.MUTED));
         }else{
-            content.addView(a.text("输入开发者提供的授权码，联网激活当前设备。永久授权，每 7 天需要联网验证一次。",13,MainActivity.MUTED));
+            content.addView(a.text("输入开发者提供的授权码，联网激活当前设备。离线使用期限由授权策略决定。",13,MainActivity.MUTED));
         }
         a.space(content,10);content.addView(a.action(service.hasLicense()?"输入其他授权码":"输入授权码",!service.hasLicense(),()->enter(()->{populate(content);a.render();})));
         a.space(content,8);content.addView(a.action("复制本机设备编号",false,()->{

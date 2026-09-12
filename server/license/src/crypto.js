@@ -66,9 +66,9 @@ export function normalizeCode(value) {
   return /^[A-Z2-9]{26,64}$/u.test(normalized) ? normalized : null;
 }
 
-export async function signLease(payload, privateKeyBase64) {
+export async function signLease(payload, privateKeyBase64, prefix = "MS2") {
   const body = base64Url(encoder.encode(JSON.stringify(payload)));
-  const unsigned = `MS2.${body}`;
+  const unsigned = `${prefix}.${body}`;
   const key = await crypto.subtle.importKey(
     "pkcs8",
     base64Bytes(privateKeyBase64),

@@ -32,12 +32,18 @@ public final class CloudLicenseTokenTest {
 
     private static String token(KeyPair keys, String product, String licenseId, String deviceId,
                                 long issuedAt, long expiresAt) throws Exception {
+        return token(keys, "MS2", product, licenseId, deviceId, issuedAt, expiresAt, null, false);
+    }
+
+    private static String token(KeyPair keys, String version, String product, String licenseId, String deviceId,
+                                long issuedAt, long expiresAt, Long offlineSeconds, boolean includeOffline) throws Exception {
         JSONObject payload = new JSONObject()
                 .put("product", product).put("licenseId", licenseId).put("deviceId", deviceId)
                 .put("subject", "Test User").put("issuedAt", issuedAt).put("expiresAt", expiresAt);
+        if (includeOffline) payload.put("offlineSeconds", offlineSeconds == null ? JSONObject.NULL : offlineSeconds);
         String encoded = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(payload.toString().getBytes(StandardCharsets.UTF_8));
-        String signed = "MS2." + encoded;
+        String signed = version + "." + encoded;
         Signature signer = Signature.getInstance("SHA256withRSA");
         PrivateKey privateKey = keys.getPrivate();
         signer.initSign(privateKey);
@@ -55,6 +61,41 @@ public final class CloudLicenseTokenTest {
         CloudLicenseToken accepted = CloudLicenseToken.verify(valid, publicKey);
         accepted.validate("maisui-travel", "device-1", "lic-1", NOW);
         check(accepted.raw.equals(valid), "valid MS2 token retained");
+
+        String permanent = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, 253402300799L, null, true);
+        CloudLicenseToken permanentToken = CloudLicenseToken.verify(permanent, publicKey);
+        permanentToken.validate("maisui-travel", "device-1", "lic-1", NOW);
+        check(permanentToken.offlineSeconds == null && !permanentToken.onlineOnly(), "MS3 permanent offline policy accepted");
+        String online = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 59, 0L, true);
+        check(CloudLicenseToken.verify(online, publicKey).onlineOnly(), "MS3 online-only policy accepted");
+        String finite = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 3599, 3600L, true);
+        check(CloudLicenseToken.verify(finite, publicKey).offlineSeconds == 3600L, "MS3 finite lease accepted");
+        String clipped = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 99, 3600L, true);
+        check(CloudLicenseToken.verify(clipped, publicKey).expiresAt == NOW + 99, "authorization expiry may clip lease");
+        String missingPolicy = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 59, null, false);
+        rejected("MS3 missing policy", () -> CloudLicenseToken.verify(missingPolicy, publicKey));
+        String negativePolicy = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 59, -1L, true);
+        rejected("MS3 negative policy", () -> CloudLicenseToken.verify(negativePolicy, publicKey));
+        JSONObject fractionalPayload = new JSONObject().put("product", "maisui-travel").put("licenseId", "lic-1")
+                .put("deviceId", "device-1").put("subject", "Test User").put("issuedAt", NOW - 1)
+                .put("expiresAt", NOW + 59).put("offlineSeconds", 0.5);
+        String fractionalEncoded = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(fractionalPayload.toString().getBytes(StandardCharsets.UTF_8));
+        Signature fractionalSigner = Signature.getInstance("SHA256withRSA");
+        fractionalSigner.initSign(keys.getPrivate());
+        fractionalSigner.update(("MS3." + fractionalEncoded).getBytes(StandardCharsets.US_ASCII));
+        String fractional = "MS3." + fractionalEncoded + "." + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(fractionalSigner.sign());
+        rejected("MS3 fractional policy", () -> CloudLicenseToken.verify(fractional, publicKey));
+        String overPolicy = token(keys, "MS3", "maisui-travel", "lic-1", "device-1",
+                NOW - 1, NOW + 7200, 3600L, true);
+        rejected("MS3 lease beyond policy", () -> CloudLicenseToken.verify(overPolicy, publicKey));
 
         String[] altered = valid.split("\\.");
         altered[1] = (altered[1].charAt(0) == 'A' ? "B" : "A") + altered[1].substring(1);
@@ -75,7 +116,7 @@ public final class CloudLicenseTokenTest {
         String overlong = token(keys, "maisui-travel", "lic-1", "device-1", NOW, NOW + 7 * 24 * 60 * 60 + 301);
         rejected("overlong lease", () -> CloudLicenseToken.verify(overlong, publicKey));
 
-        for (String malformed : new String[]{null, "", "MS1.a.b", "MS2..b", "MS2.a.b.c", "MS2.%%.xx"})
+        for (String malformed : new String[]{null, "", "MS1.a.b", "MS4.a.b", "MS2..b", "MS2.a.b.c", "MS2.%%.xx"})
             rejected("malformed token", () -> CloudLicenseToken.verify(malformed, publicKey));
 
         System.out.println("PASS: " + checks + " CloudLicenseToken assertions");

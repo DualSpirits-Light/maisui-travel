@@ -1,0 +1,17 @@
+package cn.lvxu.travel;
+import android.app.AlertDialog;
+import android.widget.*;
+import org.json.*;
+
+final class SourceLinksUi {
+ private final MainActivity a;
+ SourceLinksUi(MainActivity a){this.a=a;}
+ static String display(Object value){return value==null||value==JSONObject.NULL||value.toString().isEmpty()?"（空）":value.toString();}
+ static JSONObject resolveFresh(android.content.Context context,String url)throws Exception {PlaceImporter.Place p;boolean fetched=false;try{p=PlaceImporter.resolveFresh(url);fetched=true;}catch(Exception e){p=PlaceImporter.parseUrl(PlaceImporter.extractUrl(url));}if(AmapConsent.granted(context))try{fetched=AmapDetails.refresh(context,p)||fetched;}catch(Exception ignored){}if(!fetched)throw new java.io.IOException("高德资料暂时不可用");return placeFields(p);}
+ static JSONObject placeFields(PlaceImporter.Place p)throws JSONException {JSONObject o=new JSONObject().put("name",p.name).put("address",p.address).put("openingHours",p.openingHours);if(p.lat!=null&&p.lon!=null)o.put("lat",p.lat).put("lon",p.lon).put("coordinateSystem",p.coordinateSystem);try{float rating=Float.parseFloat(p.rating);if(Float.isFinite(rating)&&rating>=0&&rating<=5)o.put("rating",rating);}catch(Exception ignored){}return o;}
+ void show(Trip t){LinearLayout content=a.col();a.pad(content,20);ScrollView scroll=new ScrollView(a);scroll.addView(content);AlertDialog dialog=new AlertDialog.Builder(a).setTitle("已导入的高德链接").setView(scroll).setPositiveButton("关闭",null).create();
+  int count=0;for(int day=0;day<t.days;day++)for(Trip.Stop s:t.onDay(day))if(!s.sourceUrl.isEmpty()){count++;LinearLayout card=a.card(content);card.addView(a.bold("第 "+(day+1)+" 天 · "+s.name,17,MainActivity.INK));card.addView(a.text(s.address,14,MainActivity.MUTED));card.addView(a.text("营业时间："+(s.openingHours.isEmpty()?"未知":s.openingHours)+" · 评分："+(s.rating==null?"未知":s.rating),14,MainActivity.MUTED));TextView url=a.text(s.sourceUrl,14,MainActivity.GREEN);url.setTextIsSelectable(true);card.addView(url);String changed="旧记录：按当前内容保留";try{if(!s.sourceSnapshot.isEmpty()){JSONObject patch=TripLinkCodec.changes(TripLinkCodec.base(s),s.json());String[] keys={"name","address","openingHours","rating","lat","lon","coordinateSystem"},names={"名称","地址","营业时间","评分","纬度","经度","坐标系"};StringBuilder b=new StringBuilder();for(int i=0;i<keys.length;i++)if(patch.has(keys[i])){if(b.length()>0)b.append("\n");b.append(names[i]).append("：").append(display(TripLinkCodec.base(s).opt(keys[i]))).append(" → ").append(display(patch.opt(keys[i])));}changed=b.length()==0?"未修改来源字段":"修改记录："+b;}}catch(Exception ignored){}card.addView(a.text(changed,14,MainActivity.MUTED));card.addView(a.action("删除此高德链接",false,()->a.confirm("删除后保留当前地点与照片。分享时将仅以数据分享，不再通过此高德链接拉取。",()->{s.sourceUrl="";s.sourceSnapshot="";a.changed();dialog.dismiss();show(t);})));a.space(content,12);}
+  if(!t.accommodationSourceUrl.isEmpty()){count++;LinearLayout card=a.card(content);card.addView(a.bold("住宿 · "+t.accommodation,17,MainActivity.INK));TextView url=a.text(t.accommodationSourceUrl,14,MainActivity.GREEN);url.setTextIsSelectable(true);card.addView(url);card.addView(a.text(t.accommodationAddress,14,MainActivity.MUTED));card.addView(a.action("删除住宿高德链接",false,()->a.confirm("删除后保留住宿数据，分享时将仅以数据分享，不再分享此高德链接。",()->{t.accommodationSourceUrl="";t.accommodationSnapshot="";a.changed();dialog.dismiss();show(t);})));}
+  if(count==0)content.addView(a.text("还没有保存的高德链接。",16,MainActivity.MUTED));dialog.show();
+ }
+}

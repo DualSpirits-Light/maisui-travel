@@ -6,6 +6,12 @@ workers_dev = false
 routes = [{ pattern = "license.zjm0929.cn", custom_domain = true }]
 
 [vars]
+UPDATE_VERSION_CODE = "9"
+UPDATE_VERSION_NAME = "0.3.1"
+UPDATE_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.3.1/maisui-travel-0.3.1.apk"
+UPDATE_APK_SHA256 = "9053dbc30ee2640fd5195b5bbf5885489f7353e3aacf9eb08d460010e84fd0c5"
+UPDATE_NOTES = "新增攻略/回忆分享、本地图片包和三天图片口令；高德来源及修改记录合并；授权到期编辑、冻结恢复、归档删除和离线策略；每日首次启动检查更新。"
+
 DEFAULT_LEASE_DAYS = "7"
 DEFAULT_MAX_DEVICES = "1"
 PUBLIC_RATE_LIMIT_PER_MINUTE = "30"
@@ -19,3 +25,10 @@ migrations_dir = "migrations"
 
 [secrets]
 required = ["ADMIN_TOKEN", "CODE_PEPPER", "SIGNING_PRIVATE_KEY_PKCS8"]
+
+[[r2_buckets]]
+binding = "SHARES"
+bucket_name = "maisui-shares"
+
+[triggers]
+crons = ["* * * * *"]

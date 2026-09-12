@@ -35,6 +35,7 @@ class D1Database {
   constructor() {
     this.sqlite = new DatabaseSync(":memory:");
     this.sqlite.exec(readFileSync(new URL("../migrations/0001_initial.sql", import.meta.url), "utf8"));
+    this.sqlite.exec(readFileSync(new URL("../migrations/0002_license_admin.sql", import.meta.url), "utf8"));
   }
 
   prepare(sql) {
@@ -87,9 +88,9 @@ async function createLicense(env, fields = {}) {
   return result.body;
 }
 
-function decodeAndVerifyToken(token) {
+function decodeAndVerifyToken(token, expectedPrefix = "MS2") {
   const [prefix, encodedPayload, encodedSignature] = token.split(".");
-  assert.equal(prefix, "MS2");
+  assert.equal(prefix, expectedPrefix);
   assert.equal(
     verify("sha256", Buffer.from(`${prefix}.${encodedPayload}`, "ascii"), publicKey, Buffer.from(encodedSignature, "base64url")),
     true,
@@ -216,4 +217,104 @@ test("D1 per-minute counter returns stable 429 after the configured public limit
   assert.equal(limited.response.headers.get("Retry-After"), "60");
   const counter = env.DB.sqlite.prepare("SELECT count FROM rate_limits WHERE bucket LIKE 'activate:%'").get();
   assert.equal(counter.count, 3);
+});
+
+test("modern clients receive MS3 offline policy while legacy leases remain capped at seven days", async (t) => {
+  const env = makeEnvironment();
+  t.after(() => env.DB.close());
+  const license = await createLicense(env, { offlineSeconds: 0 });
+  const modern = await call(env, "POST", "/v1/activate", { code: license.code, deviceId: DEVICE_ONE, clientVersion: 31 });
+  const modernPayload = decodeAndVerifyToken(modern.body.token, "MS3");
+  assert.equal(modernPayload.offlineSeconds, 0);
+  assert.equal(modernPayload.expiresAt - modernPayload.issuedAt, 60);
+  const permanentOffline = await createLicense(env, { subject: "Permanent offline", maxDevices: 2, offlineSeconds: null });
+  const permanentActivation = await call(env, "POST", "/v1/activate", { code: permanentOffline.code, deviceId: DEVICE_TWO, clientVersion: 31 });
+  const permanentPayload = decodeAndVerifyToken(permanentActivation.body.token, "MS3");
+  assert.equal(permanentPayload.offlineSeconds, null);
+  assert.equal(permanentPayload.expiresAt, 253402300799);
+  const legacy = await call(env, "POST", "/v1/refresh", {
+    licenseId: permanentOffline.id, deviceId: DEVICE_TWO, deviceSecret: permanentActivation.body.deviceSecret, clientVersion: 30,
+  });
+  const legacyPayload = decodeAndVerifyToken(legacy.body.token);
+  assert.equal(legacyPayload.offlineSeconds, undefined);
+  assert.ok(legacyPayload.expiresAt - legacyPayload.issuedAt <= 7 * 86400);
+  await call(env, "POST", `/admin/licenses/${permanentOffline.id}/freeze`, undefined, { admin: true });
+  const resumedPermanent = await call(env, "POST", `/admin/licenses/${permanentOffline.id}/unfreeze`, undefined, { admin: true });
+  assert.equal(resumedPermanent.body.expiresAt, null);
+  const hugeOffline = await createLicense(env, { subject: "Huge finite offline", offlineSeconds: Number.MAX_SAFE_INTEGER });
+  const hugeActivation = await call(env, "POST", "/v1/activate", { code: hugeOffline.code, deviceId: DEVICE_ONE, clientVersion: 31 });
+  const hugePayload = decodeAndVerifyToken(hugeActivation.body.token, "MS3");
+  assert.equal(hugePayload.offlineSeconds, Number.MAX_SAFE_INTEGER);
+  assert.equal(hugePayload.expiresAt, 253402300799);
+});
+
+test("legacy MS2 obeys shorter offline limits and online-only rejection does not reserve or rotate a device", async (t) => {
+  const env = makeEnvironment();
+  t.after(() => env.DB.close());
+  const short = await createLicense(env, { offlineSeconds: 300, leaseDays: 7 });
+  const shortActivation = await call(env, "POST", "/v1/activate", { code: short.code, deviceId: DEVICE_ONE, clientVersion: 30 });
+  const shortPayload = decodeAndVerifyToken(shortActivation.body.token);
+  assert.equal(shortPayload.expiresAt - shortPayload.issuedAt, 300);
+
+  const onlineOnly = await createLicense(env, { offlineSeconds: 0 });
+  const rejected = await call(env, "POST", "/v1/activate", { code: onlineOnly.code, deviceId: DEVICE_TWO, clientVersion: 30 });
+  assert.deepEqual([rejected.response.status, rejected.body.error.code], [403, "CLIENT_UPDATE_REQUIRED"]);
+  assert.equal(env.DB.sqlite.prepare("SELECT COUNT(*) AS count FROM devices WHERE license_id = ?").get(onlineOnly.id).count, 0);
+
+  const modern = await call(env, "POST", "/v1/activate", { code: onlineOnly.code, deviceId: DEVICE_TWO, clientVersion: 31 });
+  assert.equal(modern.response.status, 200);
+  const secretHashBefore = env.DB.sqlite.prepare("SELECT secret_hash AS secretHash FROM devices WHERE license_id = ?").get(onlineOnly.id).secretHash;
+  const legacyRefresh = await call(env, "POST", "/v1/refresh", {
+    licenseId: onlineOnly.id, deviceId: DEVICE_TWO, deviceSecret: modern.body.deviceSecret, clientVersion: 30,
+  });
+  assert.deepEqual([legacyRefresh.response.status, legacyRefresh.body.error.code], [403, "CLIENT_UPDATE_REQUIRED"]);
+  assert.equal(env.DB.sqlite.prepare("SELECT secret_hash AS secretHash FROM devices WHERE license_id = ?").get(onlineOnly.id).secretHash, secretHashBefore);
+});
+
+test("freeze pauses finite duration, edit can renew expired licenses, and unfreeze restores remaining time", async (t) => {
+  const env = makeEnvironment();
+  t.after(() => env.DB.close());
+  const now = Math.floor(Date.now() / 1000);
+  const license = await createLicense(env, { expiresAt: now + 3600, offlineSeconds: null });
+  const activated = await call(env, "POST", "/v1/activate", { code: license.code, deviceId: DEVICE_ONE, clientVersion: 31 });
+  const frozen = await call(env, "POST", `/admin/licenses/${license.id}/freeze`, undefined, { admin: true });
+  assert.equal(frozen.response.status, 200);
+  const frozenAgain = await call(env, "POST", `/admin/licenses/${license.id}/freeze`, undefined, { admin: true });
+  assert.equal(frozenAgain.body.frozenAt, frozen.body.frozenAt);
+  const blocked = await call(env, "POST", "/v1/refresh", {
+    licenseId: license.id, deviceId: DEVICE_ONE, deviceSecret: activated.body.deviceSecret, clientVersion: 31,
+  });
+  assert.deepEqual([blocked.response.status, blocked.body.error.code], [403, "LICENSE_FROZEN"]);
+  const edited = await call(env, "PATCH", `/admin/licenses/${license.id}`, { expiresAt: now + 7200, offlineSeconds: 12345 }, { admin: true });
+  assert.equal(edited.body.offlineSeconds, 12345);
+  assert.ok(edited.body.frozenRemainingSeconds >= 7198);
+  const resumed = await call(env, "POST", `/admin/licenses/${license.id}/unfreeze`, undefined, { admin: true });
+  assert.ok(resumed.body.expiresAt >= now + 7198);
+  const resumedAgain = await call(env, "POST", `/admin/licenses/${license.id}/unfreeze`, undefined, { admin: true });
+  assert.equal(resumedAgain.body.expiresAt, resumed.body.expiresAt);
+  env.DB.sqlite.prepare("UPDATE licenses SET expires_at = ? WHERE id = ?").run(now - 10, license.id);
+  const renewed = await call(env, "PATCH", `/admin/licenses/${license.id}`, { expiresAt: now + 1000 }, { admin: true });
+  assert.equal(renewed.response.status, 200);
+});
+
+test("only revoked licenses archive or delete, restore preserves revocation, and delete cascades devices", async (t) => {
+  const env = makeEnvironment();
+  t.after(() => env.DB.close());
+  const license = await createLicense(env);
+  await call(env, "POST", "/v1/activate", { code: license.code, deviceId: DEVICE_ONE });
+  const premature = await call(env, "POST", `/admin/licenses/${license.id}/archive`, undefined, { admin: true });
+  assert.deepEqual([premature.response.status, premature.body.error.code], [409, "LICENSE_NOT_REVOKED"]);
+  const prematureDelete = await call(env, "DELETE", `/admin/licenses/${license.id}`, undefined, { admin: true });
+  assert.deepEqual([prematureDelete.response.status, prematureDelete.body.error.code], [409, "LICENSE_NOT_REVOKED"]);
+  await call(env, "POST", `/admin/licenses/${license.id}/revoke`, undefined, { admin: true });
+  await call(env, "POST", `/admin/licenses/${license.id}/archive`, undefined, { admin: true });
+  const visible = await call(env, "GET", "/admin/licenses", undefined, { admin: true });
+  assert.equal(visible.body.licenses.some((row) => row.id === license.id), false);
+  const archived = await call(env, "GET", "/admin/licenses?archived=1", undefined, { admin: true });
+  assert.equal(archived.body.licenses[0].id, license.id);
+  await call(env, "POST", `/admin/licenses/${license.id}/restore`, undefined, { admin: true });
+  assert.ok(env.DB.sqlite.prepare("SELECT revoked_at FROM licenses WHERE id = ?").get(license.id).revoked_at);
+  const deleted = await call(env, "DELETE", `/admin/licenses/${license.id}`, undefined, { admin: true });
+  assert.equal(deleted.body.deleted, true);
+  assert.equal(env.DB.sqlite.prepare("SELECT COUNT(*) AS count FROM devices WHERE license_id = ?").get(license.id).count, 0);
 });

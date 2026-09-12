@@ -2,6 +2,8 @@ package cn.lvxu.travel;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -19,6 +21,8 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -31,14 +35,16 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-/** Cloud activation client with a signed seven-day offline lease. */
+/** Cloud activation client with signed, server-selected offline policy. */
 public final class CloudLicenseService {
     private static final String PREFS = "cloud-license-v1";
     private static final String KEY_DEVICE = "device-id";
     private static final String KEY_CREDENTIAL = "credential";
     private static final String KEY_MAX_WALL = "max-wall-seconds";
     private static final String KEY_LAST_ATTEMPT = "last-refresh-at";
+    private static final String KEY_LAST_FAILURE = "last-refresh-failure-at";
     private static final String KEY_LAST_SUCCESS = "last-refresh-success-at";
+    private static final String KEY_STATUS = "last-status";
     private static final String KEY_ALIAS = "lvxu.cloud-license.v1";
     private static final long ROLLBACK_ALLOWANCE = 5 * 60;
     private static final long REFRESH_INTERVAL = 24 * 60 * 60;
@@ -53,20 +59,39 @@ public final class CloudLicenseService {
     private final OkHttpClient client;
     private final String configuredEndpoint;
     private final String configuredPublicKey;
+    private final BooleanSupplier networkConnected;
+    private volatile boolean onlineOnlyVerifiedThisSession;
+    private final AtomicBoolean backgroundRefreshInFlight = new AtomicBoolean();
 
     public CloudLicenseService(Context context) {
         this(context, new OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS).writeTimeout(20, TimeUnit.SECONDS)
                 .followRedirects(false).followSslRedirects(false).build(),
-                LicenseConfig.ENDPOINT, LicenseConfig.RSA_PUBLIC_KEY_SPKI_BASE64);
+                LicenseConfig.ENDPOINT, LicenseConfig.RSA_PUBLIC_KEY_SPKI_BASE64,
+                connectivityCheck(context));
     }
 
     /** Test seam: production callers always use the public constructor above. */
     CloudLicenseService(Context context, OkHttpClient client, String endpoint, String publicKey) {
+        this(context, client, endpoint, publicKey, () -> true);
+    }
+
+    CloudLicenseService(Context context, OkHttpClient client, String endpoint, String publicKey,
+                        BooleanSupplier networkConnected) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.client = client;
         configuredEndpoint = endpoint;
         configuredPublicKey = publicKey;
+        this.networkConnected = networkConnected;
+    }
+
+    private static BooleanSupplier connectivityCheck(Context context) {
+        Context app = context.getApplicationContext();
+        return () -> {
+            ConnectivityManager manager = (ConnectivityManager) app.getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo info = manager == null ? null : manager.getActiveNetworkInfo();
+            return info != null && info.isConnected();
+        };
     }
 
     public boolean configured() {
@@ -103,7 +128,8 @@ public final class CloudLicenseService {
                 if (max > 0 && now + ROLLBACK_ALLOWANCE < max) return false;
                 CloudLicenseToken token = verified(c.token, c.licenseId, now);
                 if (now > max) prefs.edit().putLong(KEY_MAX_WALL, now).commit();
-                return token.expiresAt > now;
+                return token.expiresAt > now && (!token.onlineOnly()
+                        || (onlineOnlyVerifiedThisSession && networkConnected.getAsBoolean()));
             } catch (Exception ignored) { return false; }
         }
     }
@@ -123,12 +149,38 @@ public final class CloudLicenseService {
             try {
                 Credential c = credential();
                 CloudLicenseToken token = verified(c.token, c.licenseId, now());
-                String date = new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
-                        .format(new Date(token.expiresAt * 1000L));
-                return "授权有效 · 离线凭证有效至 " + date;
+                if (token.offlineSeconds == null && token.expiresAt == 253402300799L)
+                    return "授权有效 · 可永久离线使用";
+                if (token.onlineOnly()) return "授权有效 · 本次使用已联网验证";
+                String date = new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(new Date(token.expiresAt * 1000L));
+                return token.offlineSeconds == null ? "授权有效 · 授权有效至 " + date
+                        : "授权有效 · 可离线使用至 " + date;
             } catch (Exception ignored) { return "授权有效"; }
         }
-        return hasLicense() ? "授权需要联网复核" : "尚未激活";
+        String status = prefs.getString(KEY_STATUS, "");
+        return hasLicense() ? (status.isEmpty() ? "授权需要联网复核" : status) : "尚未激活";
+    }
+
+    /** Called synchronously before a foreground refresh is queued. */
+    public void beginForegroundSession() {
+        onlineOnlyVerifiedThisSession = false;
+    }
+
+    /** Called when the app leaves the foreground; online-only access must not carry over. */
+    public void endForegroundSession() {
+        onlineOnlyVerifiedThisSession = false;
+    }
+
+    public long nextRefreshDelayMillis() {
+        try {
+            Credential c = credential();
+            if (c.token.isEmpty()) return 30_000;
+            CloudLicenseToken token = verifiedPolicy(c.token, c.licenseId);
+            if (token.onlineOnly()) return 30_000;
+            if (token.offlineSeconds != null)
+                return Math.min(30, Math.max(1, token.offlineSeconds / 3)) * 1000L;
+        } catch (Exception ignored) { return 30_000; }
+        return 30_000;
     }
 
     public String activate(String code) throws Exception {
@@ -136,14 +188,21 @@ public final class CloudLicenseService {
             if (!configured()) throw new IOException("云授权服务尚未配置");
             code = code == null ? "" : code.trim();
             if (code.isEmpty() || code.length() > 512) throw new IOException("激活码无效");
-            JSONObject request = new JSONObject().put("code", code).put("deviceId", deviceId());
-            JSONObject response = post("/v1/activate", request);
-            String tokenRaw = required(response, "token", MAX_RESPONSE);
-            String licenseId = required(response, "licenseId", 256);
-            String secret = required(response, "deviceSecret", 2048);
-            CloudLicenseToken token = verified(tokenRaw, licenseId, now());
-            save(new Credential(tokenRaw, licenseId, secret), now());
-            return token.subject;
+            JSONObject request = new JSONObject().put("code", code).put("deviceId", deviceId())
+                    .put("clientVersion", 31);
+            try {
+                JSONObject response = post("/v1/activate", request);
+                String tokenRaw = required(response, "token", MAX_RESPONSE);
+                String licenseId = required(response, "licenseId", 256);
+                String secret = required(response, "deviceSecret", 2048);
+                CloudLicenseToken token = verified(tokenRaw, licenseId, now());
+                save(new Credential(tokenRaw, licenseId, secret), now());
+                onlineOnlyVerifiedThisSession = token.onlineOnly();
+                return token.subject;
+            } catch (Exception e) {
+                invalidateOnlineOnly();
+                throw e;
+            }
         }
     }
 
@@ -153,46 +212,89 @@ public final class CloudLicenseService {
             Credential old = credential();
             if (old.licenseId.isEmpty() || old.secret.isEmpty()) throw new IOException("没有可复核的授权");
             JSONObject request = new JSONObject().put("licenseId", old.licenseId)
-                    .put("deviceId", deviceId()).put("deviceSecret", old.secret);
+                    .put("deviceId", deviceId()).put("deviceSecret", old.secret).put("clientVersion", 31);
             try {
                 JSONObject response = post("/v1/refresh", request);
                 String tokenRaw = required(response, "token", MAX_RESPONSE);
                 String licenseId = required(response, "licenseId", 256);
-                verified(tokenRaw, old.licenseId, now());
+                CloudLicenseToken token = verified(tokenRaw, old.licenseId, now());
                 if (!old.licenseId.equals(licenseId)) throw new SecurityException("授权编号不匹配");
                 save(new Credential(tokenRaw, old.licenseId, old.secret), now());
+                onlineOnlyVerifiedThisSession = token.onlineOnly();
             } catch (HttpStatusException e) {
-                if (e.status == 401 || e.status == 403) save(new Credential("", old.licenseId, old.secret), 0);
+                invalidateOnlineOnly();
+                if (e.status == 401 || e.status == 403) {
+                    prefs.edit().putString(KEY_STATUS, e.getMessage()).commit();
+                    save(new Credential("", old.licenseId, old.secret), 0);
+                }
+                throw e;
+            } catch (Exception e) {
+                invalidateOnlineOnly();
                 throw e;
             }
         }
     }
 
-    /** Runs at most daily, retries failures no more than hourly, and preserves a valid lease on network errors. */
+    /** Policy-aware background refresh; concurrent heartbeat calls collapse into one request. */
     public boolean refreshIfDue() {
+        if (!backgroundRefreshInFlight.compareAndSet(false, true)) return isValid();
         long now = now();
         try {
             synchronized (LOCK) {
                 Credential c = credential();
                 if (c.licenseId.isEmpty() || c.secret.isEmpty()) return false;
-                long lastAttempt = prefs.getLong(KEY_LAST_ATTEMPT, 0);
-                if (lastAttempt > 0 && now >= lastAttempt && now - lastAttempt < RETRY_INTERVAL) return isValid();
-                boolean due = now - prefs.getLong(KEY_LAST_SUCCESS, 0) >= REFRESH_INTERVAL;
+                boolean onlineOnly = false;
+                Long offlineSeconds = null;
+                long remaining = Long.MIN_VALUE;
                 if (!c.token.isEmpty()) {
-                    try { due |= verified(c.token, c.licenseId, now).expiresAt - now <= REFRESH_BEFORE_EXPIRY; }
+                    try {
+                        CloudLicenseToken policy = verifiedPolicy(c.token, c.licenseId);
+                        onlineOnly = policy.onlineOnly();
+                        offlineSeconds = policy.offlineSeconds;
+                        remaining = policy.expiresAt - now;
+                    }
+                    catch (Exception ignored) { }
+                }
+                long lastFailure = prefs.getLong(KEY_LAST_FAILURE, 0);
+                long retry = RETRY_INTERVAL;
+                if (offlineSeconds != null && offlineSeconds > 0)
+                    retry = Math.min(60, Math.max(1, offlineSeconds / 2));
+                if (!onlineOnly && remaining > 0 && lastFailure > 0 && now >= lastFailure
+                        && now - lastFailure < retry) return isValid();
+                boolean due = onlineOnly || now - prefs.getLong(KEY_LAST_SUCCESS, 0) >= REFRESH_INTERVAL;
+                if (offlineSeconds != null && offlineSeconds > 0) {
+                    long refreshWindow = Math.min(REFRESH_BEFORE_EXPIRY, Math.max(1, offlineSeconds / 3));
+                    due |= remaining <= refreshWindow;
+                }
+                if (!c.token.isEmpty()) {
+                    try { due |= (offlineSeconds == null) && verified(c.token, c.licenseId, now).expiresAt - now <= REFRESH_BEFORE_EXPIRY; }
                     catch (Exception ignored) { due = true; }
                 } else due = true;
                 if (!due) return isValid();
                 prefs.edit().putLong(KEY_LAST_ATTEMPT, now).commit();
             }
             refresh();
-        } catch (Exception ignored) { /* Background caller observes the resulting validity only. */ }
-        return isValid();
+            return isValid();
+        } catch (Exception ignored) {
+            prefs.edit().putLong(KEY_LAST_FAILURE, now).commit();
+            return isValid();
+        } finally {
+            backgroundRefreshInFlight.set(false);
+        }
     }
 
     private CloudLicenseToken verified(String raw, String licenseId, long now) throws Exception {
         CloudLicenseToken token = CloudLicenseToken.verify(raw, configuredPublicKey);
         token.validate(LicenseConfig.PRODUCT, deviceId(), licenseId, now);
+        return token;
+    }
+
+    /** Verifies signature, schema and binding while allowing an expired online heartbeat token to refresh. */
+    private CloudLicenseToken verifiedPolicy(String raw, String licenseId) throws Exception {
+        CloudLicenseToken token = CloudLicenseToken.verify(raw, configuredPublicKey);
+        if (!LicenseConfig.PRODUCT.equals(token.product)) throw new SecurityException("授权产品不匹配");
+        if (!deviceId().equals(token.deviceId)) throw new SecurityException("授权设备不匹配");
+        if (licenseId != null && !licenseId.equals(token.licenseId)) throw new SecurityException("授权编号不匹配");
         return token;
     }
 
@@ -240,7 +342,8 @@ public final class CloudLicenseService {
             String encrypted = encrypt(json.toString());
             SharedPreferences.Editor editor = prefs.edit().putString(KEY_CREDENTIAL, encrypted);
             // A newly verified server response permits recovery after the user corrects a bad local clock.
-            if (successAt > 0) editor.putLong(KEY_LAST_SUCCESS, successAt).putLong(KEY_MAX_WALL, successAt);
+            if (successAt > 0) editor.putLong(KEY_LAST_SUCCESS, successAt).putLong(KEY_MAX_WALL, successAt)
+                    .remove(KEY_STATUS).remove(KEY_LAST_FAILURE);
             if (!editor.commit()) throw new IOException("无法保存授权信息");
         }
     }
@@ -298,6 +401,14 @@ public final class CloudLicenseService {
 
     private static long now() { return System.currentTimeMillis() / 1000L; }
 
+    private void invalidateOnlineOnly() {
+        try {
+            Credential c = credential();
+            if (!c.token.isEmpty() && verifiedPolicy(c.token, c.licenseId).onlineOnly())
+                onlineOnlyVerifiedThisSession = false;
+        } catch (Exception ignored) { onlineOnlyVerifiedThisSession = false; }
+    }
+
     private static final class Credential {
         final String token, licenseId, secret;
         Credential(String token, String licenseId, String secret) {
@@ -321,6 +432,7 @@ public final class CloudLicenseService {
         private static String message(int status, String code) {
             if ("INVALID_CODE".equals(code)) return "激活码无效";
             if ("DEVICE_LIMIT_REACHED".equals(code)) return "激活码已绑定其他设备";
+            if ("LICENSE_FROZEN".equals(code)) return "授权已被冻结，请联系管理员";
             if ("LICENSE_REVOKED".equals(code)) return "授权已被管理员解绑或停用";
             if ("LICENSE_EXPIRED".equals(code)) return "授权已失效";
             if ("INVALID_CREDENTIAL".equals(code)) return "设备授权凭据无效，请联系管理员解绑后重新激活";

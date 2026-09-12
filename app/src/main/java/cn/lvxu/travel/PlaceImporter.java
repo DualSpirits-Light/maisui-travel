@@ -49,10 +49,12 @@ final class PlaceImporter {
         if(p.lat==null)setCoords(p,first(q,"lat","latitude"),first(q,"lon","lng","longitude"));
         return p;
     }
-    static Place resolve(String sharedText) throws IOException {
+    static Place resolve(String sharedText) throws IOException {return resolve(sharedText,false);}
+    static Place resolveFresh(String sharedText) throws IOException {return resolve(sharedText,true);}
+    private static Place resolve(String sharedText,boolean fresh) throws IOException {
         URI uri=extractUrl(sharedText);if(!favoriteFolderId(uri).isEmpty())throw new IOException("已识别为高德收藏夹，但该分享页未提供地点、备注和照片列表。请在高德逐个分享地点链接导入。");Place p=parseUrl(uri);Place copied=parseShareText(sharedText);if(p.name.isEmpty())p.name=copied.name;if(p.address.isEmpty())p.address=copied.address;
         // Complete coordinate links work offline; no page request is needed.
-        if(p.lat!=null && !p.name.trim().isEmpty())return clean(p);
+        if(!fresh && p.lat!=null && !p.name.trim().isEmpty())return clean(p);
         for(int redirects=0;redirects<6;redirects++) {
             if(!allowed(uri))throw new IOException("分享链接跳转到不支持的地址，请手动填写");
             HttpsURLConnection conn=(HttpsURLConnection)uri.toURL().openConnection();
@@ -65,16 +67,16 @@ final class PlaceImporter {
                     uri=uri.resolve(location);
                     if(!allowed(uri))throw new IOException("分享链接跳转到不支持的地址，请手动填写");
                     merge(p,parseUrl(uri));
-                    if(p.lat!=null&&!p.name.trim().isEmpty())return clean(p);
+                    if(!fresh&&p.lat!=null&&!p.name.trim().isEmpty())return clean(p);
                     continue;
                 }
-                if(code!=200){if(!p.name.trim().isEmpty())return clean(p);throw new IOException("高德分享页面暂不可用（"+code+"），可以手动填写");}
+                if(code!=200){if(!fresh&&!p.name.trim().isEmpty())return clean(p);throw new IOException("高德分享页面暂不可用（"+code+"），可以手动填写");}
                 String html;
                 try(InputStream in=conn.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
                     byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1){if(out.size()+n>MAX_BYTES)throw new IOException("分享页面过大");out.write(buf,0,n);}html=out.toString("UTF-8");
                 }
-                parseHtml(p,html);return clean(p);
-            } catch(IOException e){if(!p.name.trim().isEmpty())return clean(p);throw e;} finally {conn.disconnect();}
+                if(fresh){Place latest=new Place();parseHtml(latest,html);if(latest.name.isEmpty()&&latest.address.isEmpty()&&latest.lat==null&&latest.openingHours.isEmpty()&&latest.rating.isEmpty())throw new IOException("高德页面未返回可更新的地点资料");merge(p,latest);}else parseHtml(p,html);return clean(p);
+            } catch(IOException e){if(!fresh&&!p.name.trim().isEmpty())return clean(p);throw e;} finally {conn.disconnect();}
         }
         throw new IOException("分享链接跳转次数过多，请使用完整地点链接");
     }
