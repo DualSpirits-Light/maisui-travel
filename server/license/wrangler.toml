@@ -6,11 +6,11 @@ workers_dev = false
 routes = [{ pattern = "license.zjm0929.cn", custom_domain = true }]
 
 [vars]
-UPDATE_VERSION_CODE = "9"
-UPDATE_VERSION_NAME = "0.3.1"
-UPDATE_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.3.1/maisui-travel-0.3.1.apk"
-UPDATE_APK_SHA256 = "9053dbc30ee2640fd5195b5bbf5885489f7353e3aacf9eb08d460010e84fd0c5"
-UPDATE_NOTES = "新增攻略/回忆分享、本地图片包和三天图片口令；高德来源及修改记录合并；授权到期编辑、冻结恢复、归档删除和离线策略；每日首次启动检查更新。"
+UPDATE_VERSION_CODE = "10"
+UPDATE_VERSION_NAME = "0.4.0"
+UPDATE_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.4.0/maisui-travel-0.4.0.apk"
+UPDATE_APK_SHA256 = "7f235d3b45006487a0e777d4f15920820998da429753b3ed16351a9e3e1e5e3f"
+UPDATE_NOTES = "新增两套可编辑标签预设及标签组、组合搜索、那年今日、AI 搜索与规划；独立关于页、赞赏图片和更新记录；高级设置支持多地图与多个 AI 服务配置，密钥加密并验证后保存；优化旅行导入、备份和更新提示。"
 
 DEFAULT_LEASE_DAYS = "7"
 DEFAULT_MAX_DEVICES = "1"

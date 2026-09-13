@@ -32,14 +32,11 @@ foreach($library in (Get-Content -LiteralPath "$PSScriptRoot\dependencies-lock.j
     $networkJars+=(Resolve-Path -LiteralPath $jarFile).Path
 }
 if ((Get-FileHash -LiteralPath $AmapSdkPath -Algorithm SHA256).Hash -ne 'AC3EBAAFA350784474178E9DFE0CC5083D4F616F52D410E223AED792CE9D6E52') { throw 'AMap SDK checksum mismatch' }
-$amapKeyValue=$env:AMAP_ANDROID_KEY
-if ($AmapKeyFile) { $amapKeyValue=(Get-Content -LiteralPath $AmapKeyFile -Raw).Trim() }
-if ($amapKeyValue -and $amapKeyValue -notmatch '^[a-zA-Z0-9]{20,100}$') { throw 'Invalid Android map key format' }
 $manifest=(Get-Content -LiteralPath "$PSScriptRoot\app\src\main\AndroidManifest.xml" -Raw).Replace('<manifest ', '<manifest package="cn.lvxu.travel" ')
-$manifest=$manifest.Replace('${AMAP_ANDROID_KEY}',[string]$amapKeyValue)
+
 [IO.File]::WriteAllText("$BuildDirectory\AndroidManifest.xml",$manifest,[Text.UTF8Encoding]::new($false))
 Run-Tool "$bt\aapt2.exe" @('compile','--dir',"$PSScriptRoot\app\src\main\res",'-o',"$BuildDirectory\resources.zip")
-Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code','9','--version-name','0.3.1','-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
+Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code','10','--version-name','0.4.0','-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
 $sources=@(Get-ChildItem "$PSScriptRoot\app\src\main\java","$BuildDirectory\generated" -Filter *.java -Recurse | ForEach-Object FullName)
 # Windows AAPT2 can emit backslashes in nested asset names. Android AssetManager
 # looks up forward-slash paths, so normalize ZIP names before signing.

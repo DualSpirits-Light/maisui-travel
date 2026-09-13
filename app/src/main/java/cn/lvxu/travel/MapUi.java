@@ -81,10 +81,12 @@ final class MapUi {
             Spinner from=a.select(c,"起点",names,names[0]),to=a.select(c,"终点",names,names[1]);
             TextView result=a.bold("",24,MainActivity.GREEN);c.addView(result);
             AdapterView.OnItemSelectedListener listener=new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> v){}public void onItemSelected(AdapterView<?> v,View x,int p,long id){Trip.Stop s=known.get(from.getSelectedItemPosition()),t=known.get(to.getSelectedItemPosition());double[] u=GeoMath.wgs(s.lat,s.lon,s.coordinateSystem),w=GeoMath.wgs(t.lat,t.lon,t.coordinateSystem);result.setText("直线约 "+GeoMath.distance(GeoMath.meters(u[0],u[1],w[0],w[1])));}};
-            from.setOnItemSelectedListener(listener);to.setOnItemSelectedListener(listener);
+            from.setOnItemSelectedListener(listener);to.setOnItemSelectedListener(listener); Spinner travel=a.select(c,"路线方式",new String[]{"步行","驾车"},"步行");c.addView(a.action(new MapService(a).name()+"路线估算",false,()->{if(!new MapService(a).configured()){a.toast("请先在高级设置中配置地图 API Key");return;}final Trip.Stop start=known.get(from.getSelectedItemPosition()),finish=known.get(to.getSelectedItemPosition());final boolean walking=travel.getSelectedItemPosition()==0;final String[] value=new String[1];a.runJob("正在查询路线",()->{value[0]=MapRoutes.estimate(a,start,finish,walking);return null;},()->result.setText(value[0]));}));
         }
         a.body.addView(a.text("地图基于 OpenStreetMap。直线距离不是步行或驾车里程；高德坐标经近似转换展示。",12,MainActivity.MUTED));
         if(known.size()<stops.size()) {a.space(a.body,8);a.body.addView(a.text("未定位的地点可在“编辑地点”中填写经纬度，或导入含位置的高德分享链接。",12,MainActivity.MUTED));}
     }
+    void resume(){}
+    void pause(){}
     void destroy(){if(web!=null){web.stopLoading();web.loadUrl("about:blank");web.destroy();web=null;}}
 }

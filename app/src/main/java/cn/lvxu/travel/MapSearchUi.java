@@ -1,0 +1,9 @@
+package cn.lvxu.travel;
+import android.app.*;
+import android.text.InputType;
+import android.widget.*;
+import java.util.*;
+final class MapSearchUi {
+ private final MainActivity a;MapSearchUi(MainActivity a){this.a=a;}
+ void show(){MapService service=new MapService(a);if(!service.configured()){a.toast("请先在高级设置中配置地图 API Key");return;}if(a.active==null){a.toast("请先创建旅行");return;}Trip target=a.active;int day=a.day;PageUi page=new PageUi(a,service.name()+" · 搜索地点");EditText q=a.field(page.body,"地点名称","",InputType.TYPE_CLASS_TEXT);LinearLayout results=a.col();TextView submit=a.action("搜索",true,()->{String query=q.getText().toString().trim();if(query.isEmpty()){a.toast("请输入地点名称");return;}results.removeAllViews();results.addView(a.text("正在搜索…",14,MainActivity.MUTED));new Thread(()->{try{ArrayList<PlaceImporter.Place> found=service.search(query,target.city);a.runOnUiThread(()->{if(!page.alive())return;results.removeAllViews();if(found.isEmpty())results.addView(a.text("未找到相关地点，请换个关键词。",14,MainActivity.MUTED));for(PlaceImporter.Place p:found){LinearLayout c=a.card(results);c.addView(a.bold(p.name,18,MainActivity.INK));c.addView(a.text(p.address,13,MainActivity.MUTED));c.addView(a.action("添加到行程",false,()->{if(!a.trips.contains(target)){a.toast("旅行已删除");return;}Trip.Stop s=new Trip.Stop();s.name=p.name;s.address=p.address;s.lat=p.lat;s.lon=p.lon;s.coordinateSystem=p.coordinateSystem;s.sourceUrl=p.sourceUrl;s.openingHours=p.openingHours;s.day=day;try{s.rating=Float.valueOf(p.rating);}catch(Exception ignored){}s.sourceSnapshot=TripLinkCodec.snapshot(s);a.active=target;a.day=day;page.dialog.dismiss();a.stopEditorDraft(s);}));}});}catch(Exception e){a.runOnUiThread(()->{if(page.alive()){results.removeAllViews();results.addView(a.text(e.getMessage()==null?"搜索失败，请重试":e.getMessage(),14,MainActivity.ORANGE));}});}},"map-search").start();});page.body.addView(submit);page.body.addView(results);page.show();}
+}

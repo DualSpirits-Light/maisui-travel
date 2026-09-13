@@ -22,11 +22,11 @@ public final class PlannerUiTests {
         Counter checks=new Counter();MainActivity activity=null;
         try{
             Context context=instrumentation.getTargetContext();
-            AppPrefs prefs=new AppPrefs(context);prefs.setTutorialDone(true);prefs.setLastUpdateDay(LocalDate.now().toString());
+            context.getSharedPreferences("release-notes",0).edit().putBoolean(ReleaseNotes.markerKey(context,"0.4.0"),true).commit();AppPrefs prefs=new AppPrefs(context);prefs.setTutorialDone(true);prefs.setLastUpdateDay(LocalDate.now().toString());
             Activity started=instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_NEW_TASK));
             activity=(MainActivity)started;
             UiAutomation ui=instrumentation.getUiAutomation();
-            instrumentation.waitForIdleSync();
+            instrumentation.waitForIdleSync(); if(findText(ui.getRootInActiveWindow(),"更新日志")!=null){click(findText(ui.getRootInActiveWindow(),"确定"));android.os.SystemClock.sleep(300);instrumentation.waitForIdleSync();}
             QuickPlanner[] planner=new QuickPlanner[1];MainActivity host=activity;
             instrumentation.runOnMainSync(()->{planner[0]=new QuickPlanner(host);planner[0].start();});
             await(ui,"快速规划 · 1/4",true);

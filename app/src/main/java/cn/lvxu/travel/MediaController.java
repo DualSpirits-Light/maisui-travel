@@ -62,7 +62,7 @@ public final class MediaController {
     public void showBackgroundPicker(){
         new AlertDialog.Builder(a).setTitle("主页背景").setItems(new String[]{"从相册选择并裁剪","使用图片网址","随机风景（Picsum Photos）","恢复默认插画"},(d,w)->{
             if(w==0)pick(path->{a.prefs.setBackground(path);a.render();});
-            else if(w==1)backgroundUrlDialog();else if(w==2)downloadBackground("https://picsum.photos/1200/600","随机图片由 Picsum Photos 提供");
+            else if(w==1)backgroundUrlDialog();else if(w==2)downloadBackground(new ApiConfig(a).scenery(),"随机图片来自高级设置中的风景接口");
             else{a.prefs.setBackground("");a.render();}
         }).show();
     }

@@ -62,7 +62,7 @@ public final class TripShareArchive {
         Runnable commit=()->{try{
             if(context instanceof MainActivity){MainActivity owner=(MainActivity)context;if(owner.isDestroyed()||owner.isFinishing()||owner.loadFailed)throw new IOException("页面已关闭，已取消导入；请重新打开分享文件或口令");}
             if(existing.size()>=100)throw new IOException("最多支持 100 个旅行");
-            ArrayList<Trip> merged=new ArrayList<>(existing);merged.add(trip);TripStore.sort(merged);store.save(merged);existing.clear();existing.addAll(merged);
+            new TagRepository(context).mergeEmbedded(trip);ArrayList<Trip> merged=new ArrayList<>(existing);merged.add(trip);TripStore.sort(merged);store.save(merged);existing.clear();existing.addAll(merged);
         }catch(Exception e){failure.set(e);}finally{done.countDown();}};
         if(context instanceof MainActivity&&android.os.Looper.myLooper()!=android.os.Looper.getMainLooper()){
             ((MainActivity)context).runOnUiThread(commit);

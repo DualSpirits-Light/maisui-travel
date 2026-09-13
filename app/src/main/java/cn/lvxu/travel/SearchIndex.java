@@ -1,0 +1,21 @@
+package cn.lvxu.travel;
+import java.time.*;import java.util.*;
+final class SearchIndex {
+ static final class Query {String text="",tagId="",type="全部";LocalDate from,to;LocalTime after,before;Long minCost,maxCost;}
+ static final class Result {final String type,tripId,itemId,title,detail;final long cost;Result(String type,String tripId,String itemId,String title,String detail,long cost){this.type=type;this.tripId=tripId;this.itemId=itemId;this.title=title;this.detail=detail;this.cost=cost;}String key(){return type+":"+tripId+":"+itemId;}}
+ static List<Result> search(Collection<Trip> trips,Query q){ArrayList<Result> out=new ArrayList<>();for(Trip t:trips){
+  LocalDate start=date(t,0),end=date(t,Math.max(0,t.days-1));
+  if(type(q,"旅行")&&matches(q,t.tagIds,t.title,t.city,t.departure,t.companions,t.accommodation,t.accommodationAddress)&&range(q,start,end)&&cost(q,t.budget)&&q.after==null&&q.before==null)out.add(new Result("旅行",t.id,t.id,t.title,t.city+" · "+t.start+" · 预算 ¥"+Trip.money(t.budget),t.budget));
+  for(Trip.Stop s:t.stops){ArrayList<String> tags=new ArrayList<>(t.tagIds);tags.addAll(s.tagIds);if(type(q,"地点")&&matches(q,tags,s.name,s.note,s.address,s.openingHours)&&range(q,date(t,s.day),date(t,s.day))&&time(q,s.time)&&cost(q,s.cost))out.add(new Result("地点",t.id,s.id,s.name,t.title+" · "+date(t,s.day)+" "+s.time+" · ¥"+Trip.money(s.cost)+"\n"+s.note,s.cost));}
+  for(Trip.Expense e:t.expenses){LocalDateTime d=datetime(e.occurredAt);if(type(q,"预算")&&matches(q,t.tagIds,e.name,e.category)&&range(q,d==null?null:d.toLocalDate(),d==null?null:d.toLocalDate())&&time(q,d==null?"":d.toLocalTime().toString())&&cost(q,e.amount))out.add(new Result("预算",t.id,e.id,e.name,t.title+" · "+e.occurredAt+" · "+e.category+" · ¥"+Trip.money(e.amount),e.amount));}
+  for(Trip.Item i:t.items)if(type(q,"清单")&&matches(q,t.tagIds,i.name,i.note,i.attributes.toString())&&range(q,start,end)&&q.after==null&&q.before==null&&cost(q,0))out.add(new Result("清单",t.id,i.id,i.name,t.title+" · "+i.note,0));
+  for(Trip.Checkin c:t.checkins){LocalDateTime d=datetime(c.time);if(type(q,"打卡")&&matches(q,t.tagIds,c.place,c.mood,String.join(" ",c.companions))&&range(q,d==null?null:d.toLocalDate(),d==null?null:d.toLocalDate())&&time(q,d==null?"":d.toLocalTime().toString())&&cost(q,0))out.add(new Result("打卡",t.id,c.id,c.place.isEmpty()?"旅行打卡":c.place,t.title+" · "+c.time+" · "+c.mood,0));}
+ }out.sort(Comparator.comparing((Result r)->r.type).thenComparing(r->r.title));return out;}
+ private static boolean type(Query q,String t){return q.type==null||"全部".equals(q.type)||q.type.equals(t)||"行程".equals(q.type)&&"地点".equals(t)||"备注".equals(q.type)&&("地点".equals(t)||"清单".equals(t)||"打卡".equals(t));}
+ private static boolean matches(Query q,List<String> tags,String... content){if(q.tagId!=null&&!q.tagId.isEmpty()&&!tags.contains(q.tagId))return false;String n=q.text==null?"":q.text.trim().toLowerCase(Locale.ROOT);return n.isEmpty()||String.join(" ",content).toLowerCase(Locale.ROOT).contains(n);}
+ private static boolean range(Query q,LocalDate first,LocalDate last){if(q.from==null&&q.to==null)return true;return first!=null&&last!=null&&(q.from==null||!last.isBefore(q.from))&&(q.to==null||!first.isAfter(q.to));}
+ private static boolean time(Query q,String value){if(q.after==null&&q.before==null)return true;try{LocalTime t=LocalTime.parse(value);return(q.after==null||!t.isBefore(q.after))&&(q.before==null||!t.isAfter(q.before));}catch(Exception e){return false;}}
+ private static boolean cost(Query q,long n){return(q.minCost==null||n>=q.minCost)&&(q.maxCost==null||n<=q.maxCost);}
+ private static LocalDate date(Trip t,int day){try{return LocalDate.parse(t.start).plusDays(day);}catch(Exception e){return null;}}
+ private static LocalDateTime datetime(String iso){try{return LocalDateTime.parse(iso);}catch(Exception e){try{return LocalDate.parse(iso).atStartOfDay();}catch(Exception ignored){return null;}}}
+}
