@@ -1,15 +1,13 @@
-# 高德 Android Key 配置
+# 地图密钥与安装签名
 
-PackageName：`cn.lvxu.travel`
+包名：`cn.lvxu.travel`。当前 0.5.0 与已发布 0.4.0 使用相同安装证书，必须沿用它才能覆盖升级。
 
-调试版 SHA1（当前测试 APK）：
+- 当前实际发布证书 SHA-1：`17:C6:0F:DB:EB:EE:15:32:A0:B7:8F:0B:45:B0:C9:6D:4E:14:3A:84`。
+- SHA-256：`6feea399c67761f33962ffe1ed9181336d391f25c7fbc294aedfaa5382f9e15e`。
+- 本机原签名路径与构建参数见 [开发指南](docs/DEVELOPMENT.md)。不能凭文件名选择所谓 release 密钥；必须核对证书指纹。
 
-`17:C6:0F:DB:EB:EE:15:32:A0:B7:8F:0B:45:B0:C9:6D:4E:14:3A:84`
+高德 Android SDK Key 在构建时通过 `AMAP_ANDROID_KEY` 或 `-AmapKeyFile` 注入清单；Gradle 也可从未入库的 local.properties 读取。只允许应用绑定的 Android Key 出现在 APK。浏览器 Web Key、安全密钥和 REST Web 服务 Key 不能互换。
 
-发布版 SHA1（独立正式签名）：
+高德可选 REST、百度服务端、腾讯 WebService、AI 与 WebDAV 凭据由用户在 App 配置验证后保存；不要写入源码、发布包或备份。真实接口历史验证见[第三阶段记录](docs/superpowers/plans/2026-09-14-stage3-checkpoint.md)。
 
-`33:04:68:00:A4:04:5A:13:ED:B0:26:FB:2F:49:73:85:4B:9B:72:0A`
-
-两者都已根据实际本机密钥证书读取。当前 0.2.0 测试版沿用旧版调试签名，正式密钥另存于开发者私有备份，未放入源码。不能在更换签名后直接覆盖安装旧测试版。
-
-高德平台请选择 Android 应用类型。Android Key 与 Web 服务 Key 的用途不同；接入 Android SDK 后，完整 POI 实时查询能力仍须按平台文档与所开通服务核对。
+[历史原文](docs/history/AMAP-CONFIG-before-organization-2026-09-24.md)中另一张“独立正式签名”证书不是当前发布签名，不能用于覆盖升级。
