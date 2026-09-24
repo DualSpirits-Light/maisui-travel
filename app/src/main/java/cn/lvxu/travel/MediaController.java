@@ -27,7 +27,7 @@ public final class MediaController {
 
     public void pick(MainActivity.ImageCallback cb){pick(cb,true);}
     public void pickOriginal(MainActivity.ImageCallback cb){pick(cb,false);}
-    private void pick(MainActivity.ImageCallback cb,boolean crop){callback=cb;cropSelection=crop;checkinCapture=false;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");try{a.startActivityForResult(i,PICK);}catch(ActivityNotFoundException e){a.toast("未找到可选择图片的应用");}}
+    private void pick(MainActivity.ImageCallback cb,boolean crop){callback=cb;cropSelection=crop;checkinCapture=false;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");try{a.startActivityForResult(i,PICK);}catch(ActivityNotFoundException e){cancelSelection();a.toast("失败：未找到可选择图片的应用");}}
 
     public void takeCheckin(){if(checkin==null)checkin=new CheckinUi(a,this);checkin.show();}
 
@@ -39,28 +39,42 @@ public final class MediaController {
     }
 
     void chooseCheckinPhoto(){chooseCheckinPhoto("group");}
-    void chooseCheckinPhoto(String kind){cropSelection=true;checkinPhotoKind=kind;callback=path->{if(checkin!=null)checkin.photoSelected(path,kind);};checkinCapture=true;
-        String label="scenery".equals(kind)?"风景":"合照";AlertDialog chooser=new AlertDialog.Builder(a).setTitle("添加"+label).setItems(new String[]{"拍照","从相册选择","暂不添加照片"},(d,w)->{if(w==0)launchCamera();else if(w==1){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");try{a.startActivityForResult(i,PICK);}catch(ActivityNotFoundException e){cancelSelection();a.toast("未找到可选择图片的应用");}}else{if(checkin!=null)checkin.photoSelected("",kind);cancelSelection();}}).create();chooser.setOnCancelListener(d->cancelSelection());chooser.show();}
+    void chooseCheckinPhoto(String kind){cropSelection=false;checkinPhotoKind=kind;callback=path->{if(checkin!=null)checkin.photoSelected(path,kind);};checkinCapture=true;
+        String label="scenery".equals(kind)?"风景":"合照";AlertDialog chooser=new RoundedDialogs.Builder(a).setTitle("添加"+label).setItems(new String[]{"拍照","从相册选择","暂不添加照片"},(d,w)->{if(w==0)launchCamera();else if(w==1){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");try{a.startActivityForResult(i,PICK);}catch(ActivityNotFoundException e){cancelSelection();a.toast("失败：未找到可选择图片的应用");}}else{if(checkin!=null)checkin.photoSelected("",kind);cancelSelection();}}).create();chooser.setOnCancelListener(d->cancelSelection());chooser.show();}
 
-    private void launchCamera(){try{File dir=new File(a.getCacheDir(),"camera");if(!dir.exists()&&!dir.mkdirs())throw new IOException("Cannot create camera folder");cameraFile=File.createTempFile("capture-",".jpg",dir);Uri uri=AppFileProvider.uri(a,cameraFile);Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT,uri).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("capture",uri));a.startActivityForResult(i,CAMERA);}catch(Exception e){discardCamera();a.toast("无法启动相机，请改从相册选择");}}
+    private void launchCamera(){try{File dir=new File(a.getCacheDir(),"camera");if(!dir.exists()&&!dir.mkdirs())throw new IOException("Cannot create camera folder");cameraFile=File.createTempFile("capture-",".jpg",dir);Uri uri=AppFileProvider.uri(a,cameraFile);Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT,uri).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("capture",uri));a.startActivityForResult(i,CAMERA);}catch(Exception e){discardCamera();cancelSelection();a.toast("失败：无法启动相机，请改从相册选择");}}
 
     public boolean onResult(int req,int result,Intent data){
         if(req==EXPORT_CARD)return checkin!=null&&checkin.onResult(req,result,data);
         if(req!=PICK&&req!=CAMERA)return false;if(result!=Activity.RESULT_OK){if(req==CAMERA)discardCamera();cancelSelection();return true;}
-        Uri uri=req==CAMERA&&cameraFile!=null?Uri.fromFile(cameraFile):(data==null?null:data.getData());if(uri==null){a.toast("未能读取所选照片");return true;}
-        if(req==PICK&&!cropSelection){final MainActivity.ImageCallback selectedCallback=callback;cancelSelection();final String[] path={null};a.runJob("正在保存原图",()->{path[0]=files.importOriginal(uri);return path[0];},()->{if(selectedCallback!=null)selectedCallback.selected(path[0]);});return true;}
-        final Uri selected=uri;final Bitmap[] decoded={null};a.runJob("正在读取照片",()->{try{decoded[0]=files.decode(selected,2400);return "照片已读取";}catch(Exception e){if(req==CAMERA)discardCamera();cancelSelection();throw e;}},()->showCrop(decoded[0]));return true;
+        Uri uri=req==CAMERA&&cameraFile!=null?Uri.fromFile(cameraFile):(data==null?null:data.getData());if(uri==null){discardCamera();cancelSelection();a.toast("失败：未能读取所选照片");return true;}
+        if(checkinCapture){showCheckinEditor(uri);return true;}
+        if(req==PICK&&!cropSelection){final MainActivity.ImageCallback selectedCallback=callback;cancelSelection();final String[] path={null};a.runJob("正在保存原图",()->{try{path[0]=files.importOriginal(uri);return "成功";}catch(Exception e){throw new IOException("失败：无法保存照片，请检查存储空间");}},()->{if(selectedCallback!=null)selectedCallback.selected(path[0]);});return true;}
+        final Uri selected=uri;final Bitmap[] decoded={null};a.runJob("正在读取照片",()->{try{decoded[0]=files.decode(selected,2400);return null;}catch(Exception e){if(req==CAMERA)discardCamera();cancelSelection();throw new IOException("失败：无法读取照片，请选择其他图片");}},()->showCrop(decoded[0]));return true;
+    }
+
+    private void showCheckinEditor(Uri uri){
+        final MainActivity.ImageCallback selectedCallback=callback;
+        // Post our own completion so a destroyed activity cannot strand a decoded bitmap.
+        a.runJob("正在读取照片",()->{Bitmap decoded=null;try{decoded=files.decode(uri,2400);}catch(Exception|OutOfMemoryError ignored){}final Bitmap source=decoded;
+            a.runOnUiThread(()->{if(a.isFinishing()||a.isDestroyed()){if(source!=null)source.recycle();discardCamera();cancelSelection();return;}
+                if(source==null){discardCamera();cancelSelection();a.toast("失败：无法读取照片，请选择其他图片");return;}
+                cancelSelection();
+                try{PhotoEditorUi.show(a,source,uri,path->{discardCamera();if(selectedCallback!=null)selectedCallback.selected(path);},()->{discardCamera();cancelSelection();});}
+                catch(Exception|OutOfMemoryError ignored){if(!source.isRecycled())source.recycle();discardCamera();a.toast("失败：无法打开照片编辑，请选择较小的图片");}
+            });return null;
+        },null);
     }
 
     private void showCrop(Bitmap source){
         CropView crop=new CropView(a,source);FrameLayout box=new FrameLayout(a);box.setPadding(a.dp(12),a.dp(12),a.dp(12),0);box.addView(crop,new FrameLayout.LayoutParams(-1,a.dp(430)));
-        AlertDialog dlg=new AlertDialog.Builder(a).setTitle("裁剪照片").setMessage("拖动照片调整位置，双指缩放").setView(box).setNegativeButton("取消",(d,w)->{source.recycle();discardCamera();cancelSelection();}).setPositiveButton("使用照片",null).create();
-        dlg.setOnShowListener(x->dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{Bitmap out=crop.result(1600);dlg.dismiss();a.runJob("正在保存照片",()->{crop.savedPath=files.save(out,"photos",88);out.recycle();return crop.savedPath;},()->{if(cameraFile!=null){cameraFile.delete();cameraFile=null;}MainActivity.ImageCallback cb=callback;callback=null;checkinCapture=false;if(cb!=null)cb.selected(crop.savedPath);});}));
+        AlertDialog dlg=new RoundedDialogs.Builder(a).setTitle("裁剪照片").setMessage("拖动照片调整位置，双指缩放").setView(box).setNegativeButton("取消",(d,w)->{source.recycle();discardCamera();cancelSelection();}).setPositiveButton("使用照片",null).create();
+        dlg.setOnShowListener(x->dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{Bitmap out=crop.result(1600);dlg.dismiss();a.runJob("正在保存照片",()->{try{crop.savedPath=files.save(out,"photos",88);return "成功";}catch(Exception e){discardCamera();cancelSelection();throw new IOException("失败：无法保存照片，请检查存储空间");}finally{out.recycle();}},()->{if(cameraFile!=null){cameraFile.delete();cameraFile=null;}MainActivity.ImageCallback cb=callback;callback=null;checkinCapture=false;if(cb!=null)cb.selected(crop.savedPath);});}));
         dlg.setOnCancelListener(d->{if(!source.isRecycled())source.recycle();discardCamera();cancelSelection();});dlg.show();
     }
 
     public void showBackgroundPicker(){
-        new AlertDialog.Builder(a).setTitle("主页背景").setItems(new String[]{"从相册选择并裁剪","使用图片网址","随机风景（Picsum Photos）","恢复默认插画"},(d,w)->{
+        new RoundedDialogs.Builder(a).setTitle("主页背景").setItems(new String[]{"从相册选择并裁剪","使用图片网址","随机风景（Picsum Photos）","恢复默认插画"},(d,w)->{
             if(w==0)pick(path->{a.prefs.setBackground(path);a.render();});
             else if(w==1)backgroundUrlDialog();else if(w==2)downloadBackground(new ApiConfig(a).scenery(),"随机图片来自高级设置中的风景接口");
             else{a.prefs.setBackground("");a.render();}

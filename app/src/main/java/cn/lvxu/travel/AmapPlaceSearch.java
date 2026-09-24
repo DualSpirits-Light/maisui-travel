@@ -55,7 +55,7 @@ final class AmapPlaceSearch {
         input.setHint("例如：西湖、博物馆、咖啡");
         String city = activity.active == null ? "" : safe(activity.active.city);
         if (!city.isEmpty()) form.addView(activity.text("搜索城市：" + city, 12, MainActivity.MUTED));
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = new RoundedDialogs.Builder(activity)
                 .setTitle("搜索高德地点")
                 .setView(form)
                 .setNegativeButton("取消", null)
@@ -129,7 +129,7 @@ final class AmapPlaceSearch {
             String address = safe(poi.getSnippet());
             labels[i] = address.isEmpty() ? name : name + "\n" + address;
         }
-        new AlertDialog.Builder(activity)
+        new RoundedDialogs.Builder(activity)
             .setTitle("选择地点")
             .setItems(labels, (dialog, which) -> openDraft(pois.get(which), targetTrip, targetDay))
             .setNegativeButton("取消", null)

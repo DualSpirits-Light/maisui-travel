@@ -1,5 +1,5 @@
 const PACKAGE_NAME = "cn.lvxu.travel";
-const SHA256 = /^[0-9a-f]{64}$/iu;
+import { cloudflareUpdateReady, readUpdateConfig } from "./update-download.js";
 
 /**
  * Produces the public Android update manifest once mounted at
@@ -7,16 +7,25 @@ const SHA256 = /^[0-9a-f]{64}$/iu;
  * independent lets release automation supply the current APK values through
  * Worker variables without exposing any licensing data.
  */
-export function updateManifestResponse(env) {
-  const versionCode = Number.parseInt(env.UPDATE_VERSION_CODE ?? "", 10);
-  const versionName = env.UPDATE_VERSION_NAME ?? "";
-  const apkUrl = env.UPDATE_APK_URL ?? "";
-  const sha256 = (env.UPDATE_APK_SHA256 ?? "").toLowerCase();
-  const notes = env.UPDATE_NOTES ?? "";
-  let validUrl = false;
-  try { validUrl = new URL(apkUrl).protocol === "https:"; } catch {}
-  if (!Number.isSafeInteger(versionCode) || versionCode < 1 || versionName.length > 100 || !validUrl || !SHA256.test(sha256) || notes.length > 2000) {
+export async function updateManifestResponse(request, env) {
+  const config = readUpdateConfig(env);
+  if (!config) {
     return Response.json({ error: { code: "UPDATE_NOT_CONFIGURED", message: "Update manifest is unavailable" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
   }
-  return Response.json({ packageName: PACKAGE_NAME, versionCode, versionName, apkUrl, sha256, notes }, { headers: { "Cache-Control": "public, max-age=300" } });
+  const ready = await cloudflareUpdateReady(env, config);
+  const cloudflareUrl = ready ? new URL(`/updates/apk/${config.versionCode}.apk`, request.url).toString() : "";
+  if (!config.githubApkUrl && !ready) {
+    return Response.json({ error: { code: "UPDATE_NOT_READY", message: "No update download source is ready" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
+  const manifest = {
+    packageName: PACKAGE_NAME,
+    versionCode: config.versionCode,
+    versionName: config.versionName,
+    apkUrl: config.githubApkUrl || cloudflareUrl,
+    sha256: config.sha256,
+    notes: config.notes,
+  };
+  if (config.githubApkUrl) manifest.githubApkUrl = config.githubApkUrl;
+  if (ready) manifest.cloudflareApkUrl = cloudflareUrl;
+  return Response.json(manifest, { headers: { "Cache-Control": "public, max-age=300" } });
 }

@@ -8,8 +8,12 @@ import {
   signLease,
 } from "./crypto.js";
 import { adminAsset } from "./admin-page.js";
+import { encryptLicenseCode, decryptLicenseCode } from './code-vault.js';
+import { adminAuthRequest, requireAdminSession } from './admin-auth.js';
+import { createDonationHandlers } from "./donations.js";
 import {shareRequest,cleanupShares} from "./shares.js";
 import {updateManifestResponse} from "./update-manifest.js";
+import {updateDownloadResponse} from "./update-download.js";
 
 const PRODUCT = "maisui-travel";
 const MAX_BODY_BYTES = 4096;
@@ -124,6 +128,8 @@ async function leaseToken(license, deviceId, env, now, clientVersion) {
   return signLease(payload, env.SIGNING_PRIVATE_KEY_PKCS8, modern ? "MS3" : "MS2");
 }
 
+const donations = createDonationHandlers({ readJson, HttpError, json });
+
 function assertClientPolicy(license, clientVersion) {
   if (clientVersion < 31 && license.offline_seconds === 0) {
     throw new HttpError(403, "CLIENT_UPDATE_REQUIRED", "Update the client to use an online-only license");
@@ -199,11 +205,7 @@ async function refresh(request, env) {
 }
 
 async function requireAdmin(request, env) {
-  const authorization = request.headers.get("authorization") || "";
-  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if (!env.ADMIN_TOKEN || !(await constantTimeSecretEqual(token, env.ADMIN_TOKEN))) {
-    throw new HttpError(401, "ADMIN_UNAUTHORIZED", "Unauthorized");
-  }
+  return requireAdminSession(request, env, HttpError);
 }
 
 async function createLicense(request, env) {
@@ -221,10 +223,13 @@ async function createLicense(request, env) {
   if (offlineSeconds !== null && (!Number.isSafeInteger(offlineSeconds) || offlineSeconds < 0)) throw new HttpError(400, "INVALID_REQUEST", "Invalid offlineSeconds");
   const id = crypto.randomUUID();
   const code = generateLicenseCode();
+  let sealed;
+  try { sealed = await encryptLicenseCode(env, id, code); }
+  catch { throw new HttpError(503, 'CODE_VAULT_UNAVAILABLE', 'License code storage is unavailable'); }
   await env.DB.prepare(`
-    INSERT INTO licenses (id, code_hmac, subject, expires_at, max_devices, lease_days, offline_seconds, revoked_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-  `).bind(id, await hmacSha256(env.CODE_PEPPER, normalizeCode(code)), subject, expiresAt, maxDevices, leaseDays, offlineSeconds, now).run();
+    INSERT INTO licenses (id, code_hmac, subject, expires_at, max_devices, lease_days, offline_seconds, revoked_at, created_at, code_ciphertext, code_key_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+  `).bind(id, await hmacSha256(env.CODE_PEPPER, normalizeCode(code)), subject, expiresAt, maxDevices, leaseDays, offlineSeconds, now, sealed.ciphertext, sealed.keyId).run();
   return json(201, { id, code, subject, expiresAt, maxDevices, leaseDays, offlineSeconds, createdAt: now });
 }
 
@@ -234,6 +239,8 @@ async function listLicenses(env, archived = false) {
       l.lease_days AS leaseDays, l.offline_seconds AS offlineSeconds, l.revoked_at AS revokedAt,
       l.archived_at AS archivedAt, l.frozen_at AS frozenAt, l.frozen_remaining_seconds AS frozenRemainingSeconds,
       l.created_at AS createdAt,
+      CASE WHEN l.code_ciphertext IS NULL THEN 'legacy-unavailable' ELSE 'available' END AS codeStatus,
+      l.source_license_id AS sourceLicenseId,
       COUNT(d.device_id) AS deviceCount
     FROM licenses l LEFT JOIN devices d ON d.license_id = l.id
     WHERE ${archived ? "l.archived_at IS NOT NULL" : "l.archived_at IS NULL"}
@@ -255,36 +262,46 @@ async function updateLicense(id, request, env) {
   const offlineSeconds = Object.hasOwn(body, "offlineSeconds") ? body.offlineSeconds : current.offline_seconds;
   if (expiresAt !== null && (!Number.isSafeInteger(expiresAt) || expiresAt < 0)) throw new HttpError(400, "INVALID_REQUEST", "Invalid expiresAt");
   if (offlineSeconds !== null && (!Number.isSafeInteger(offlineSeconds) || offlineSeconds < 0)) throw new HttpError(400, "INVALID_REQUEST", "Invalid offlineSeconds");
-  let frozenRemaining = current.frozen_remaining_seconds;
-  if (current.frozen_at != null && Object.hasOwn(body, "expiresAt")) {
-    frozenRemaining = expiresAt === null ? null : Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+  const fields = [], values = [];
+  if (Object.hasOwn(body, 'expiresAt')) {
+    fields.push('expires_at = ?', 'frozen_remaining_seconds = CASE WHEN frozen_at IS NULL THEN frozen_remaining_seconds ELSE ? END');
+    values.push(expiresAt, expiresAt === null ? null : Math.max(0, expiresAt - Math.floor(Date.now() / 1000)));
   }
-  await env.DB.prepare("UPDATE licenses SET expires_at = ?, offline_seconds = ?, frozen_remaining_seconds = ? WHERE id = ?")
-    .bind(expiresAt, offlineSeconds, frozenRemaining, id).run();
-  return json(200, { id, expiresAt, offlineSeconds, frozenAt: current.frozen_at, frozenRemainingSeconds: frozenRemaining });
+  if (Object.hasOwn(body, 'offlineSeconds')) { fields.push('offline_seconds = ?'); values.push(offlineSeconds); }
+  if (!fields.length) throw new HttpError(400, 'INVALID_REQUEST', 'No supported license fields supplied');
+  const updated = await env.DB.prepare(`UPDATE licenses SET ${fields.join(', ')} WHERE id = ? RETURNING expires_at, offline_seconds, frozen_at, frozen_remaining_seconds`)
+    .bind(...values, id).first();
+  if (!updated) throw new HttpError(404, 'LICENSE_NOT_FOUND', 'License not found');
+  return json(200, { id, expiresAt: updated.expires_at, offlineSeconds: updated.offline_seconds, frozenAt: updated.frozen_at, frozenRemainingSeconds: updated.frozen_remaining_seconds });
 }
 
 async function freezeLicense(id, env) {
   validateLicenseId(id);
   const current = await env.DB.prepare("SELECT * FROM licenses WHERE id = ?").bind(id).first();
   if (!current) throw new HttpError(404, "LICENSE_NOT_FOUND", "License not found");
+  if (current.revoked_at != null || current.archived_at != null) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'Restore revoked use before freezing');
   if (current.frozen_at != null) return json(200, { id, frozen: true, frozenAt: current.frozen_at });
   const now = Math.floor(Date.now() / 1000);
-  const remaining = current.expires_at == null ? null : Math.max(0, current.expires_at - now);
-  await env.DB.prepare("UPDATE licenses SET frozen_at = ?, frozen_remaining_seconds = ? WHERE id = ?")
-    .bind(now, remaining, id).run();
-  return json(200, { id, frozen: true, frozenAt: now, frozenRemainingSeconds: remaining });
+  const updated = await env.DB.prepare(`UPDATE licenses SET frozen_at = COALESCE(frozen_at, ?),
+    frozen_remaining_seconds = CASE WHEN frozen_at IS NOT NULL THEN frozen_remaining_seconds WHEN expires_at IS NULL THEN NULL ELSE MAX(0, expires_at - ?) END
+    WHERE id = ? AND revoked_at IS NULL AND archived_at IS NULL RETURNING frozen_at, frozen_remaining_seconds`)
+    .bind(now, now, id).first();
+  if (!updated) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'License state changed; reload before freezing');
+  return json(200, { id, frozen: true, frozenAt: updated.frozen_at, frozenRemainingSeconds: updated.frozen_remaining_seconds });
 }
 
 async function unfreezeLicense(id, env) {
   validateLicenseId(id);
   const current = await env.DB.prepare("SELECT * FROM licenses WHERE id = ?").bind(id).first();
   if (!current) throw new HttpError(404, "LICENSE_NOT_FOUND", "License not found");
+  if (current.revoked_at != null || current.archived_at != null) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'Restore revoked use before unfreezing');
   if (current.frozen_at == null) return json(200, { id, frozen: false, expiresAt: current.expires_at });
-  const expiresAt = current.frozen_remaining_seconds == null ? null : Math.floor(Date.now() / 1000) + current.frozen_remaining_seconds;
-  await env.DB.prepare("UPDATE licenses SET expires_at = ?, frozen_at = NULL, frozen_remaining_seconds = NULL WHERE id = ?")
-    .bind(expiresAt, id).run();
-  return json(200, { id, frozen: false, expiresAt });
+  const updated = await env.DB.prepare(`UPDATE licenses SET
+    expires_at = CASE WHEN frozen_at IS NULL THEN expires_at WHEN frozen_remaining_seconds IS NULL THEN NULL ELSE ? + frozen_remaining_seconds END,
+    frozen_at = NULL, frozen_remaining_seconds = NULL WHERE id = ? AND revoked_at IS NULL AND archived_at IS NULL RETURNING expires_at`)
+    .bind(Math.floor(Date.now() / 1000), id).first();
+  if (!updated) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'License state changed; reload before unfreezing');
+  return json(200, { id, frozen: false, expiresAt: updated.expires_at });
 }
 
 async function archiveLicense(id, restore, env) {
@@ -293,7 +310,8 @@ async function archiveLicense(id, restore, env) {
   if (!current) throw new HttpError(404, "LICENSE_NOT_FOUND", "License not found");
   if (!restore && current.revoked_at == null) throw new HttpError(409, "LICENSE_NOT_REVOKED", "Only revoked licenses can be archived");
   const archivedAt = restore ? null : (current.archived_at ?? Math.floor(Date.now() / 1000));
-  await env.DB.prepare("UPDATE licenses SET archived_at = ? WHERE id = ?").bind(archivedAt, id).run();
+  const updated = await env.DB.prepare(`UPDATE licenses SET archived_at = ? WHERE id = ?${restore ? '' : ' AND revoked_at IS NOT NULL'}`).bind(archivedAt, id).run();
+  if (updated.meta?.changes !== 1) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'License state changed; reload before archiving');
   return json(200, { id, archived: !restore, archivedAt });
 }
 
@@ -302,7 +320,8 @@ async function deleteLicense(id, env) {
   const current = await env.DB.prepare("SELECT revoked_at FROM licenses WHERE id = ?").bind(id).first();
   if (!current) throw new HttpError(404, "LICENSE_NOT_FOUND", "License not found");
   if (current.revoked_at == null) throw new HttpError(409, "LICENSE_NOT_REVOKED", "Only revoked licenses can be deleted");
-  await env.DB.prepare("DELETE FROM licenses WHERE id = ?").bind(id).run();
+  const removed = await env.DB.prepare("DELETE FROM licenses WHERE id = ? AND revoked_at IS NOT NULL RETURNING id").bind(id).first();
+  if (!removed) throw new HttpError(409, 'LICENSE_STATE_CONFLICT', 'License state changed; reload before deleting');
   return json(200, { id, deleted: true });
 }
 
@@ -324,6 +343,55 @@ async function revokeLicense(id, env) {
   return json(200, { id, revoked: true });
 }
 
+async function restoreLicenseUse(id, env) {
+  validateLicenseId(id);
+  const current = await env.DB.prepare('UPDATE licenses SET revoked_at = NULL, archived_at = NULL WHERE id = ? RETURNING frozen_at, expires_at').bind(id).first();
+  if (!current) throw new HttpError(404, 'LICENSE_NOT_FOUND', 'License not found');
+  return json(200, { id, revoked: false, archived: false, frozenAt: current.frozen_at, expiresAt: current.expires_at });
+}
+
+async function auditCode(env, id, admin, action, outcome) {
+  await env.DB.prepare('INSERT INTO license_code_audit (id, license_id, actor, action, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), id, admin.legacy ? 'legacy-admin-token' : `admin:${admin.id}`, action, outcome, Math.floor(Date.now() / 1000)).run();
+}
+
+async function revealLicenseCode(id, env, admin) {
+  validateLicenseId(id);
+  const license = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
+  if (!license) throw new HttpError(404, 'LICENSE_NOT_FOUND', 'License not found');
+  if (license.code_ciphertext == null) {
+    await auditCode(env, id, admin, 'reveal', 'legacy-unavailable');
+    throw new HttpError(409, 'LEGACY_CODE_UNAVAILABLE', 'Historical codes were stored as irreversible hashes. Reissue a separate license; the original code and devices remain valid.');
+  }
+  let code;
+  try { code = await decryptLicenseCode(env, license); }
+  catch {
+    await auditCode(env, id, admin, 'reveal', 'vault-unavailable');
+    throw new HttpError(503, 'CODE_VAULT_UNAVAILABLE', 'License code cannot be decrypted with the configured key');
+  }
+  // Fail closed: never return plaintext when its audit write fails.
+  await auditCode(env, id, admin, 'reveal', 'success');
+  return json(200, { id, code, codeStatus: 'available' });
+}
+
+async function reissueLicense(id, request, env) {
+  validateLicenseId(id);
+  const body = await readJson(request);
+  if (body.confirm !== true) throw new HttpError(400, 'INVALID_REQUEST', 'Explicit confirmation is required to issue a separate license');
+  const source = await env.DB.prepare('SELECT id FROM licenses WHERE id = ?').bind(id).first();
+  if (!source) throw new HttpError(404, 'LICENSE_NOT_FOUND', 'License not found');
+  const newId = crypto.randomUUID(), code = generateLicenseCode();
+  let sealed;
+  try { sealed = await encryptLicenseCode(env, newId, code); }
+  catch { throw new HttpError(503, 'CODE_VAULT_UNAVAILABLE', 'License code storage is unavailable'); }
+  const result = await env.DB.prepare(`INSERT INTO licenses
+    (id, code_hmac, subject, expires_at, max_devices, lease_days, offline_seconds, revoked_at, archived_at, frozen_at, frozen_remaining_seconds, created_at, code_ciphertext, code_key_id, source_license_id)
+    SELECT ?, ?, subject, expires_at, max_devices, lease_days, offline_seconds, revoked_at, archived_at, frozen_at, frozen_remaining_seconds, ?, ?, ?, id
+    FROM licenses WHERE id = ?`).bind(newId, await hmacSha256(env.CODE_PEPPER, normalizeCode(code)), Math.floor(Date.now() / 1000), sealed.ciphertext, sealed.keyId, id).run();
+  if (result.meta?.changes !== 1) throw new HttpError(404, 'LICENSE_NOT_FOUND', 'License not found');
+  return json(201, { id: newId, sourceLicenseId: id, code, codeStatus: 'available', originalLicensePreserved: true });
+}
+
 async function unbindDevice(licenseId, deviceId, env) {
   if (!ID_RE.test(licenseId) || !UUID_RE.test(deviceId)) throw new HttpError(400, "INVALID_REQUEST", "Invalid path parameters");
   const result = await env.DB.prepare("DELETE FROM devices WHERE license_id = ? AND device_id = ?").bind(licenseId, deviceId).run();
@@ -333,7 +401,11 @@ async function unbindDevice(licenseId, deviceId, env) {
 
 export async function handleRequest(request, env, ctx) {
   const url = ensureHttps(request);
-  if(request.method === "GET" && url.pathname === "/updates/latest.json") return updateManifestResponse(env);
+  if(request.method === "GET" && url.pathname === "/updates/latest.json") return updateManifestResponse(request, env);
+  if (url.pathname.startsWith("/updates/apk/")) {
+    await rateLimit(request, env, "updates", integerSetting(env, "UPDATES_RATE_LIMIT_PER_MINUTE", 30, 1, 120));
+    return updateDownloadResponse(request, env);
+  }
   const share = await shareRequest(request,env,ctx); if(share) return share;
   if (request.method === "GET") {
     const asset = adminAsset(url.pathname);
@@ -341,14 +413,32 @@ export async function handleRequest(request, env, ctx) {
   }
   if (request.method === "POST" && url.pathname === "/v1/activate") return activate(request, env);
   if (request.method === "POST" && url.pathname === "/v1/refresh") return refresh(request, env);
+  if (request.method === "GET" && url.pathname === "/v1/donations") {
+    await rateLimit(request, env, "donations", integerSetting(env, "PUBLIC_RATE_LIMIT_PER_MINUTE", 30, 1, 1000));
+    return donations.publicFeed(env);
+  }
   if (url.pathname.startsWith("/admin/")) {
     await rateLimit(request, env, "admin", integerSetting(env, "ADMIN_RATE_LIMIT_PER_MINUTE", 60, 1, 1000));
-    await requireAdmin(request, env);
+    const auth = await adminAuthRequest(request, env, { HttpError, readJson, json, rateLimit });
+    if (auth) return auth;
+    const admin = await requireAdmin(request, env);
+    if (request.method === "POST" && url.pathname === "/admin/donations") return donations.create(request, env);
+    if (request.method === "GET" && url.pathname === "/admin/donations") return donations.list(env);
+    const donation = url.pathname.match(/^\/admin\/donations\/([^/]+)$/u);
+    if (request.method === "PATCH" && donation) return donations.update(decodeURIComponent(donation[1]), request, env);
+    if (request.method === "DELETE" && donation) return donations.remove(decodeURIComponent(donation[1]), env);
     if (request.method === "POST" && url.pathname === "/admin/licenses") return createLicense(request, env);
     if (request.method === "GET" && url.pathname === "/admin/licenses") return listLicenses(env, url.searchParams.get("archived") === "1");
     const license = url.pathname.match(/^\/admin\/licenses\/([^/]+)$/u);
     if (request.method === "PATCH" && license) return updateLicense(decodeURIComponent(license[1]), request, env);
     if (request.method === "DELETE" && license) return deleteLicense(decodeURIComponent(license[1]), env);
+    const codeAction = url.pathname.match(/^\/admin\/licenses\/([^/]+)\/(code|reissue|restore-use)$/u);
+    if (codeAction) {
+      const id = decodeURIComponent(codeAction[1]);
+      if (request.method === 'GET' && codeAction[2] === 'code') return revealLicenseCode(id, env, admin);
+      if (request.method === 'POST' && codeAction[2] === 'reissue') return reissueLicense(id, request, env);
+      if (request.method === 'POST' && codeAction[2] === 'restore-use') return restoreLicenseUse(id, env);
+    }
     const devices = url.pathname.match(/^\/admin\/licenses\/([^/]+)\/devices$/u);
     if (request.method === "GET" && devices) return listDevices(decodeURIComponent(devices[1]), env);
     const revoke = url.pathname.match(/^\/admin\/licenses\/([^/]+)\/revoke$/u);
@@ -370,7 +460,7 @@ export default {
   async scheduled(controller,env,ctx) {ctx.waitUntil(cleanupShares(env));},
   async fetch(request, env, ctx) {
     try {
-      if (!env.DB || !env.ADMIN_TOKEN || !env.CODE_PEPPER || !env.SIGNING_PRIVATE_KEY_PKCS8) return error(503, "SERVER_MISCONFIGURED", "Service unavailable");
+      if (!env.DB || !env.CODE_PEPPER || !env.SIGNING_PRIVATE_KEY_PKCS8) return error(503, "SERVER_MISCONFIGURED", "Service unavailable");
       return await handleRequest(request, env, ctx);
     } catch (caught) {
       if (caught instanceof HttpError) {

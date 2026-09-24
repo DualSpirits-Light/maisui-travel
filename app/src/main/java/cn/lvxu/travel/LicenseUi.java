@@ -28,8 +28,9 @@ final class LicenseUi {
                 finally{a.runOnUiThread(()->populate(content));}
             },()->{populate(content);a.render();})));
         }else if(a.prefs.paid()){
-            content.addView(a.bold("已激活 · 离线授权",18,MainActivity.GREEN));
+            content.addView(a.bold("已激活 · 历史离线授权",18,MainActivity.GREEN));
             content.addView(a.text(a.prefs.activationSubject(),13,MainActivity.MUTED));
+            content.addView(a.text("已有授权继续按原有效期使用；新激活请使用在线授权码。",12,MainActivity.MUTED));
         }else{
             content.addView(a.text("输入开发者提供的授权码，联网激活当前设备。离线使用期限由授权策略决定。",13,MainActivity.MUTED));
         }
@@ -45,15 +46,13 @@ final class LicenseUi {
         LinearLayout form=a.col();a.pad(form,22);
         EditText code=a.field(form,"授权码","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         code.setSingleLine(false);code.setMaxLines(5);
-        AlertDialog dialog=new AlertDialog.Builder(a).setTitle("激活麦穗旅序").setView(form).setNegativeButton("取消",null).setPositiveButton("激活",null).create();
+        AlertDialog dialog=new RoundedDialogs.Builder(a).setTitle("激活麦穗旅序").setView(form).setNegativeButton("取消",null).setPositiveButton("激活",null).create();
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             String value=code.getText().toString().trim();
             if(value.isEmpty()||value.length()>12000){code.setError("请输入有效的授权码");return;}
+            if(value.startsWith("LVX1.")){code.setError("旧版离线码已停止新增激活，请联系开发者换发在线授权码");return;}
             a.runJob("正在激活",()->{
-                if(value.startsWith("LVX1.")){
-                    if(a.prefs.cloud.hasLicense())throw new IllegalArgumentException("此设备已使用在线授权，请输入在线授权码");
-                    new ActivationService(a.prefs).activate(value);
-                }else a.prefs.cloud.activate(value);
+                a.prefs.cloud.activate(value);
                 return "激活成功";
             },()->{code.setText("");dialog.dismiss();if(success!=null)success.run();});
         }));dialog.show();

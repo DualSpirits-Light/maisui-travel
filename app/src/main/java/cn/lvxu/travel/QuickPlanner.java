@@ -23,7 +23,7 @@ final class QuickPlanner {
   LinearLayout root=a.col();root.setMinimumHeight(a.dp(480));page=a.col();ScrollView scroll=new ScrollView(a);scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
   LinearLayout buttons=new LinearLayout(a);buttons.setOrientation(LinearLayout.HORIZONTAL);buttons.setGravity(Gravity.CENTER);previousButton=a.action("上一步",false,this::previous);TextView cancel=a.action("取消",false,()->dialog.dismiss());nextButton=a.action("下一步",true,this::next);
   LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(0,-2,1);buttonParams.setMargins(a.dp(4),a.dp(4),a.dp(4),a.dp(4));buttons.addView(previousButton,buttonParams);buttons.addView(cancel,new LinearLayout.LayoutParams(buttonParams));buttons.addView(nextButton,new LinearLayout.LayoutParams(buttonParams));root.addView(buttons);
-  dialog=new AlertDialog.Builder(a).setTitle("快速规划 · 1/4 基本信息").setView(root).create();
+  dialog=new RoundedDialogs.Builder(a).setTitle("快速规划 · 1/4 基本信息").setView(root).create();
   dialog.setOnShowListener(v->{renderStep();enableTextInput();});
   dialog.setOnDismissListener(v->generation++);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setBackgroundDrawable(a.shape(MainActivity.SURFACE,24));
  }

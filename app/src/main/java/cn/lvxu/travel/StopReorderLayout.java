@@ -16,7 +16,8 @@ final class StopReorderLayout extends LinearLayout {
     private View dragged;private Object dragToken;private boolean dropped,moving;private float screenY;
     StopReorderLayout(MainActivity a,Trip trip,int day){super(a);this.a=a;this.trip=trip;this.day=day;setOrientation(VERTICAL);setTag("stop-list");setClipChildren(false);setOnDragListener(this::dragEvent);}
 
-    void bind(View card,Trip.Stop stop){stops.put(card,stop);installLongPress(card,card);}
+    void bind(View card,Trip.Stop stop,Runnable details){stops.put(card,stop);installLongPress(card,card);installDetailsTap(card,card,details);}
+    private void installDetailsTap(View view,View card,Runnable details){if(view!=card&&!view.hasOnClickListeners())view.setOnClickListener(v->details.run());if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)installDetailsTap(group.getChildAt(i),card,details);}}
     private void installLongPress(View view,View card){view.setOnLongClickListener(v->begin(card));if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)installLongPress(group.getChildAt(i),card);}}
     private boolean begin(View card){
         if(dragged!=null||getChildCount()<2)return true;

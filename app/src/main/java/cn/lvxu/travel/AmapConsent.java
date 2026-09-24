@@ -39,7 +39,7 @@ final class AmapConsent {
         String label = "《高德地图开放平台隐私权政策》";
         int start = copy.indexOf(label);
         message.setSpan(new URLSpan(POLICY), start, start + label.length(), 0);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = new RoundedDialogs.Builder(activity)
                 .setTitle("启用高德地图")
                 .setMessage(message)
                 .setNegativeButton("暂不启用", (d,w)->declined.run()).setOnCancelListener(d->declined.run())

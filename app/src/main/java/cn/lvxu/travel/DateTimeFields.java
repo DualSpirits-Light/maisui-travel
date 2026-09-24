@@ -19,7 +19,10 @@ import java.util.regex.Pattern;
 final class DateTimeFields {
     private static final DateTimeFormatter DATE=DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter TIME=DateTimeFormatter.ofPattern("HH:mm");
-    private static final DateTimeFormatter DATE_TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+    /** Editing fields use a space so a visible value never exposes the storage delimiter. */
+    private static final DateTimeFormatter DATE_TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter LEGACY_DATE_TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+    private static final DateTimeFormatter DISPLAY_DATE_TIME=DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm");
     private static final Pattern TIME_IN_TEXT=Pattern.compile("(?<!\\d)([01]\\d|2[0-3]):[0-5]\\d(?!\\d)");
 
     private DateTimeFields() {}
@@ -39,7 +42,7 @@ final class DateTimeFields {
     }
 
     static EditText dateTime(MainActivity a,LinearLayout form,String label,String value){
-        EditText field=field(a,form,label,value,"选择日期和时间");
+        EditText field=field(a,form,label,normalizeDateTime(value),"选择日期和时间");
         field.setInputType(InputType.TYPE_CLASS_TEXT);
         picker(field).setOnClickListener(v->{
             LocalDateTime base=parseDateTime(field.getText().toString(),LocalDateTime.now());
@@ -104,7 +107,25 @@ final class DateTimeFields {
     private static void pickTime(MainActivity a,EditText field,LocalTime base){new TimePickerDialog(a,(dialog,hour,minute)->field.setText(LocalTime.of(hour,minute).format(TIME)),base.getHour(),base.getMinute(),true).show();}
     private static LocalDate parseDate(String text,LocalDate fallback){try{return LocalDate.parse(text.trim(),DATE);}catch(Exception ignored){return fallback;}}
     private static LocalTime parseTime(String text,LocalTime fallback){try{return LocalTime.parse(text.trim(),TIME);}catch(Exception ignored){return fallback;}}
-    private static LocalDateTime parseDateTime(String text,LocalDateTime fallback){try{return LocalDateTime.parse(text.trim(),DATE_TIME);}catch(Exception ignored){return fallback;}}
+    static LocalDateTime parseDateTime(String text){return parseDateTime(text,LocalDateTime.now());}
+    static LocalDateTime parseDateTime(String text,LocalDateTime fallback){
+        return DateTimeValues.parse(text,fallback);
+    }
+    /** Converts a legacy or editing value to the format shown in an editor. */
+    static String normalizeDateTime(String text){
+        if(text==null||text.trim().isEmpty())return "";
+        return DateTimeValues.normalize(text);
+    }
+    /** Keeps the existing on-disk delimiter for callers that save a field value. */
+    static String storageDateTime(String text){
+        if(text==null||text.trim().isEmpty())return "";
+        return DateTimeValues.storage(text);
+    }
+    /** Formats a stored date-time for any user-visible label. */
+    static String displayDateTime(String text){
+        if(text==null||text.trim().isEmpty())return "";
+        return DateTimeValues.display(text);
+    }
     private static LocalTime[] timesIn(String text){
         Matcher matcher=TIME_IN_TEXT.matcher(text==null?"":text);LocalTime first=null,second=null;
         if(matcher.find())first=LocalTime.parse(matcher.group(),TIME);

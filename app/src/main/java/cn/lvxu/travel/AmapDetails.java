@@ -6,8 +6,8 @@ final class AmapDetails {
     static void enrich(android.content.Context a,PlaceImporter.Place p)throws Exception{enrich(a,p,false);}
     static boolean refresh(android.content.Context a,PlaceImporter.Place p)throws Exception{return enrich(a,p,true);}
     private static boolean enrich(android.content.Context a,PlaceImporter.Place p,boolean fresh)throws Exception{
-        String userKey=new ApiConfig(a).mapKey("amap");if(userKey.isEmpty())return false;
-        for(PlaceImporter.Place found:MapService.search("amap",userKey,p.name,"")){if(!found.poiId.isEmpty()&&found.poiId.equals(p.poiId)||normal(found.name).equals(normal(p.name))&&!p.address.isEmpty()&&normal(found.address).equals(normal(p.address))){if(fresh){p.name=found.name;p.address=found.address;p.lat=found.lat;p.lon=found.lon;p.coordinateSystem=found.coordinateSystem;}if(!found.rating.isEmpty())p.rating=found.rating;if(!found.openingHours.isEmpty())p.openingHours=found.openingHours;return true;}}return false;
+        if(!AmapConsent.granted(a))return false;
+        return legacySdk(a,p,fresh);
     }
     private static boolean legacySdk(android.content.Context a,PlaceImporter.Place p,boolean fresh)throws Exception{
         ServiceSettings settings=ServiceSettings.getInstance();settings.updatePrivacyShow(a,true,true);settings.updatePrivacyAgree(a,true);

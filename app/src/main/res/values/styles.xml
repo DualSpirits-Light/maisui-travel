@@ -7,6 +7,10 @@
         <item name="android:navigationBarColor">#F6F5F0</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:alertDialogTheme">@style/AppAlertDialogTheme</item>
+        <item name="android:dialogTheme">@style/AppDialogTheme</item>
+        <item name="android:datePickerDialogTheme">@style/AppAlertDialogTheme</item>
+        <item name="android:timePickerDialogTheme">@style/AppAlertDialogTheme</item>
     </style>
     <style name="AppThemeDark" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
@@ -15,5 +19,26 @@
         <item name="android:navigationBarColor">#14231E</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:alertDialogTheme">@style/AppAlertDialogThemeDark</item>
+        <item name="android:dialogTheme">@style/AppDialogThemeDark</item>
+        <item name="android:datePickerDialogTheme">@style/AppAlertDialogThemeDark</item>
+        <item name="android:timePickerDialogTheme">@style/AppAlertDialogThemeDark</item>
+    </style>
+
+    <style name="AppAlertDialogTheme" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorAccent">#23644F</item>
+    </style>
+    <style name="AppAlertDialogThemeDark" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background_dark</item>
+        <item name="android:colorAccent">#459474</item>
+    </style>
+    <style name="AppDialogTheme" parent="android:style/Theme.Material.Light.Dialog">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorAccent">#23644F</item>
+    </style>
+    <style name="AppDialogThemeDark" parent="android:style/Theme.Material.Dialog">
+        <item name="android:windowBackground">@drawable/dialog_background_dark</item>
+        <item name="android:colorAccent">#459474</item>
     </style>
 </resources>

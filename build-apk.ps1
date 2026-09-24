@@ -7,7 +7,9 @@ param(
     [string]$AmapKeyFile = '',
     [string]$NetworkLibDirectory = "$PSScriptRoot\build-manual\network",
     [string]$SigningAlias = 'androiddebugkey',
-    [string]$SigningPasswordEnv = ''
+    [string]$SigningPasswordEnv = '',
+    [ValidateRange(1,2147483647)][int]$VersionCode = 11,
+    [string]$VersionName = '0.5.0'
 )
 $ErrorActionPreference='Stop'
 $SdkPath=(Resolve-Path -LiteralPath $SdkPath).Path
@@ -18,6 +20,7 @@ $bt=Join-Path $SdkPath 'build-tools\35.0.0'
 $platform=Join-Path $SdkPath 'platforms\android-35\android.jar'
 function Run-Tool([string]$Tool,[string[]]$Arguments) { & $Tool @Arguments; if($LASTEXITCODE -ne 0){throw "$Tool failed ($LASTEXITCODE)"} }
 New-Item -ItemType Directory -Force -Path $BuildDirectory,"$BuildDirectory\classes","$BuildDirectory\dex","$BuildDirectory\generated" | Out-Null
+$BuildDirectory=(Resolve-Path -LiteralPath $BuildDirectory).Path
 if (!(Test-Path -LiteralPath $AmapSdkPath)) {
     New-Item -ItemType Directory -Force -Path (Split-Path $AmapSdkPath) | Out-Null
     Invoke-WebRequest -Uri 'https://repo.maven.apache.org/maven2/com/amap/api/3dmap-location-search/11.2.100_loc11.2.100_sea9.8.1/3dmap-location-search-11.2.100_loc11.2.100_sea9.8.1.jar' -OutFile $AmapSdkPath
@@ -32,11 +35,15 @@ foreach($library in (Get-Content -LiteralPath "$PSScriptRoot\dependencies-lock.j
     $networkJars+=(Resolve-Path -LiteralPath $jarFile).Path
 }
 if ((Get-FileHash -LiteralPath $AmapSdkPath -Algorithm SHA256).Hash -ne 'AC3EBAAFA350784474178E9DFE0CC5083D4F616F52D410E223AED792CE9D6E52') { throw 'AMap SDK checksum mismatch' }
+$amapKeyValue=$env:AMAP_ANDROID_KEY
+if ($AmapKeyFile) { $amapKeyValue=(Get-Content -LiteralPath $AmapKeyFile -Raw).Trim() }
+if ($amapKeyValue -and $amapKeyValue -notmatch '^[a-zA-Z0-9]{20,100}$') { throw 'Invalid Android map key format' }
 $manifest=(Get-Content -LiteralPath "$PSScriptRoot\app\src\main\AndroidManifest.xml" -Raw).Replace('<manifest ', '<manifest package="cn.lvxu.travel" ')
+$manifest=$manifest.Replace('${AMAP_ANDROID_KEY}',[string]$amapKeyValue)
 
 [IO.File]::WriteAllText("$BuildDirectory\AndroidManifest.xml",$manifest,[Text.UTF8Encoding]::new($false))
 Run-Tool "$bt\aapt2.exe" @('compile','--dir',"$PSScriptRoot\app\src\main\res",'-o',"$BuildDirectory\resources.zip")
-Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code','10','--version-name','0.4.0','-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
+Run-Tool "$bt\aapt2.exe" @('link','-o',"$BuildDirectory\unsigned.apk",'-I',$platform,'--manifest',"$BuildDirectory\AndroidManifest.xml",'--java',"$BuildDirectory\generated",'--min-sdk-version','26','--target-sdk-version','35','--version-code',[string]$VersionCode,'--version-name',$VersionName,'-A',"$PSScriptRoot\app\src\main\assets", "$BuildDirectory\resources.zip")
 $sources=@(Get-ChildItem "$PSScriptRoot\app\src\main\java","$BuildDirectory\generated" -Filter *.java -Recurse | ForEach-Object FullName)
 # Windows AAPT2 can emit backslashes in nested asset names. Android AssetManager
 # looks up forward-slash paths, so normalize ZIP names before signing.

@@ -1,5 +1,13 @@
 const encoder = new TextEncoder();
 
+export async function deriveAdminPassword(password, salt, pepper, iterations = 100000) {
+  // Workers WebCrypto supports at most 100,000 PBKDF2 iterations. The private
+  // pepper also prevents offline guessing from a database-only disclosure.
+  const input = await hmacSha256(pepper, password);
+  const key = await crypto.subtle.importKey('raw', encoder.encode(input), 'PBKDF2', false, ['deriveBits']);
+  return base64Url(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: encoder.encode(salt), iterations }, key, 256)));
+}
+
 export function base64Url(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);

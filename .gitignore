@@ -1,9 +1,11 @@
 .gradle/
+.wrangler/
 local.properties
 **/build/
 *.jks
 .idea/
 build-manual/
+build-stage*/
 .kotlin/
 .env
 .env.*

@@ -23,18 +23,18 @@ final class PhotoPreviewUi {
     }
 
     static void crop(MainActivity a,String path,MainActivity.ImageCallback saved){
-        final Bitmap[] source={null};a.runJob("正在读取照片",()->{source[0]=a.media.files.decode(path,2400);return null;},()->{
-            if(source[0]==null){a.toast("无法读取照片");return;}
+        final Bitmap[] source={null};a.runJob("正在读取照片",()->{try{source[0]=a.media.files.decode(path,2400);return null;}catch(Exception e){throw new java.io.IOException("失败：无法读取照片，请选择其他图片");}},()->{
+            if(source[0]==null){a.toast("失败：无法读取照片");return;}
             MediaController.CropView crop=new MediaController.CropView(a,source[0]);
             FrameLayout box=new FrameLayout(a){@Override protected void onMeasure(int width,int height){int side=MeasureSpec.getSize(width);super.onMeasure(width,MeasureSpec.makeMeasureSpec(side,MeasureSpec.EXACTLY));}};
             box.addView(crop,new FrameLayout.LayoutParams(-1,-1));
-            AlertDialog dialog=new AlertDialog.Builder(a).setTitle("裁剪照片").setMessage("拖动调整位置，双指缩放。保存后替换这张照片。")
+            AlertDialog dialog=new RoundedDialogs.Builder(a).setTitle("裁剪照片").setMessage("拖动调整位置，双指缩放。保存后替换这张照片。")
                 .setView(box).setNegativeButton("放弃",null).setPositiveButton("保存",null).create();
             dialog.setOnDismissListener(v->{if(!source[0].isRecycled())source[0].recycle();});
             dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{
                 if(crop.getWidth()==0||crop.getHeight()==0)return;
                 Bitmap output=crop.result(1600);dialog.dismiss();final String[] result={null};
-                a.runJob("正在保存裁剪",()->{try{result[0]=a.media.files.save(output,"photos",92);return result[0];}finally{output.recycle();}},()->saved.selected(result[0]));
+                a.runJob("正在保存裁剪",()->{try{result[0]=a.media.files.save(output,"photos",92);return "成功";}catch(Exception e){throw new java.io.IOException("失败：无法保存照片，请检查存储空间");}finally{output.recycle();}},()->saved.selected(result[0]));
             }));dialog.show();
         });
     }

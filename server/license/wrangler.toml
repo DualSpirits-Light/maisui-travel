@@ -6,11 +6,11 @@ workers_dev = false
 routes = [{ pattern = "license.zjm0929.cn", custom_domain = true }]
 
 [vars]
-UPDATE_VERSION_CODE = "10"
-UPDATE_VERSION_NAME = "0.4.0"
-UPDATE_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.4.0/maisui-travel-0.4.0.apk"
-UPDATE_APK_SHA256 = "7f235d3b45006487a0e777d4f15920820998da429753b3ed16351a9e3e1e5e3f"
-UPDATE_NOTES = "新增两套可编辑标签预设及标签组、组合搜索、那年今日、AI 搜索与规划；独立关于页、赞赏图片和更新记录；高级设置支持多地图与多个 AI 服务配置，密钥加密并验证后保存；优化旅行导入、备份和更新提示。"
+UPDATE_VERSION_CODE = "11"
+UPDATE_VERSION_NAME = "0.5.0"
+UPDATE_GITHUB_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.5.0/maisui-travel-0.5.0.apk"
+UPDATE_APK_SHA256 = "c407d7c8b3e56c8ddc0e7d2c4b60417fcfb06b462512a0fbc12397ca4f4c0316"
+UPDATE_NOTES = "新增主题配色与圆角窗口；完善地点详情、标签筛选、旅行打卡与照片编辑；优化 WebDAV、定位与统一管理后台；支持双线路下载、进度与通知。"
 
 DEFAULT_LEASE_DAYS = "7"
 DEFAULT_MAX_DEVICES = "1"
@@ -24,11 +24,15 @@ database_id = "84fc1616-599f-46fa-b86c-db944817f4ee"
 migrations_dir = "migrations"
 
 [secrets]
-required = ["ADMIN_TOKEN", "CODE_PEPPER", "SIGNING_PRIVATE_KEY_PKCS8"]
+required = ["CODE_PEPPER", "SIGNING_PRIVATE_KEY_PKCS8"]
 
 [[r2_buckets]]
 binding = "SHARES"
 bucket_name = "maisui-shares"
+
+[[r2_buckets]]
+binding = "UPDATES"
+bucket_name = "maisui-updates"
 
 [triggers]
 crons = ["* * * * *"]
