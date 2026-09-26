@@ -8,9 +8,11 @@ param(
     [string]$WrongSignerFixtureApk='',
     [string]$SigningAlias='androiddebugkey',
     [string]$SigningPasswordEnv='',
-    [switch]$StageNineOnly
+    [switch]$StageNineOnly,
+    [switch]$MapKeyOnly
 )
 $ErrorActionPreference='Stop'
+if($StageNineOnly -and $MapKeyOnly){throw 'Choose only one focused test suite.'}
 if($Device -notmatch '^emulator-\d+$'){throw 'Run these integration tests on a disposable emulator only.'}
 $SdkPath=(Resolve-Path -LiteralPath $SdkPath).Path
 $JdkPath=(Resolve-Path -LiteralPath $JdkPath).Path
@@ -45,6 +47,7 @@ Invoke-Checked "$bt/apksigner.bat" @('sign','--ks',$SigningKey,'--ks-key-alias',
 Invoke-Checked "$SdkPath/platform-tools/adb.exe" @('-s',$Device,'install','-r',"$testBuild/tests.apk")
 $instrumentArgs=@('-s',$Device,'shell','am','instrument','-w')
 if($StageNineOnly){$instrumentArgs+=@('-e','stageNineOnly','true')}
+if($MapKeyOnly){$instrumentArgs+=@('-e','mapKeyOnly','true')}
 $instrumentArgs+='cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation'
 $testOutput = & "$SdkPath/platform-tools/adb.exe" @instrumentArgs
 $testExit = $LASTEXITCODE

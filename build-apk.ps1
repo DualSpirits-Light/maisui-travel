@@ -4,7 +4,6 @@ param(
     [string]$BuildDirectory = "$PSScriptRoot\build-manual",
     [string]$SigningKey = "$PSScriptRoot\build-manual\debug.jks",
     [string]$AmapSdkPath = "$PSScriptRoot\build-manual\amap-sdk.jar",
-    [string]$AmapKeyFile = '',
     [string]$NetworkLibDirectory = "$PSScriptRoot\build-manual\network",
     [string]$SigningAlias = 'androiddebugkey',
     [string]$SigningPasswordEnv = '',
@@ -35,11 +34,7 @@ foreach($library in (Get-Content -LiteralPath "$PSScriptRoot\dependencies-lock.j
     $networkJars+=(Resolve-Path -LiteralPath $jarFile).Path
 }
 if ((Get-FileHash -LiteralPath $AmapSdkPath -Algorithm SHA256).Hash -ne 'AC3EBAAFA350784474178E9DFE0CC5083D4F616F52D410E223AED792CE9D6E52') { throw 'AMap SDK checksum mismatch' }
-$amapKeyValue=$env:AMAP_ANDROID_KEY
-if ($AmapKeyFile) { $amapKeyValue=(Get-Content -LiteralPath $AmapKeyFile -Raw).Trim() }
-if ($amapKeyValue -and $amapKeyValue -notmatch '^[a-zA-Z0-9]{20,100}$') { throw 'Invalid Android map key format' }
 $manifest=(Get-Content -LiteralPath "$PSScriptRoot\app\src\main\AndroidManifest.xml" -Raw).Replace('<manifest ', '<manifest package="cn.lvxu.travel" ')
-$manifest=$manifest.Replace('${AMAP_ANDROID_KEY}',[string]$amapKeyValue)
 
 [IO.File]::WriteAllText("$BuildDirectory\AndroidManifest.xml",$manifest,[Text.UTF8Encoding]::new($false))
 Run-Tool "$bt\aapt2.exe" @('compile','--dir',"$PSScriptRoot\app\src\main\res",'-o',"$BuildDirectory\resources.zip")

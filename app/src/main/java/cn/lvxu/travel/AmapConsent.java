@@ -22,7 +22,7 @@ final class AmapConsent {
     static boolean granted(Context context) {
         boolean agreed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(AGREED, false);
-        if (agreed) apply(context);
+
         return agreed;
     }
 
@@ -46,7 +46,6 @@ final class AmapConsent {
                 .setPositiveButton("同意并启用", (d, which) -> {
                     activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                             .putBoolean(AGREED, true).apply();
-                    apply(activity);
                     accepted.run();
                 }).create();
         dialog.setOnShowListener(v -> {
@@ -56,12 +55,12 @@ final class AmapConsent {
         dialog.show();
     }
 
-    private static void apply(Context context) {
+    static void apply(Context context) {
         try {
             MapsInitializer.updatePrivacyShow(context.getApplicationContext(), true, true);
             MapsInitializer.updatePrivacyAgree(context.getApplicationContext(), true);
-        } catch (RuntimeException ignored) {
-            // AMapUi will fall back cleanly if this SDK cannot initialize.
+        } catch (RuntimeException | LinkageError ignored) {
+            // The caller displays an explicit unavailable state if initialization fails.
         }
     }
 }

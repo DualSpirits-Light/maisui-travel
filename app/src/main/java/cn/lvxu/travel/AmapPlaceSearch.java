@@ -24,12 +24,21 @@ final class AmapPlaceSearch {
     private final MainActivity activity;
     private ProgressDialog progress;
     private int requestGeneration;
+    private String requestKey;
 
     AmapPlaceSearch(MainActivity activity) {
         this.activity = activity;
     }
 
     void search(String keyword) {
+        if (!AmapRuntime.configured(activity)) {
+            new AdvancedSettingsUi(activity).androidKey(() -> search(keyword));
+            return;
+        }
+        if (AmapRuntime.needsRestart(activity)) {
+            activity.toast("高德 Android Key 已更改，请重启应用后搜索");
+            return;
+        }
         final String clean = keyword == null ? "" : keyword.trim();
         if (clean.isEmpty()) {
             showSearchDialog();
@@ -76,7 +85,12 @@ final class AmapPlaceSearch {
 
     private void beginSearch(String keyword) {
         if (!alive() || !AmapConsent.granted(activity)) return;
+        if (!AmapRuntime.prepare(activity)) {
+            activity.toast("高德服务暂不可用，请检查 Android Key 或重启应用");
+            return;
+        }
         final int generation = ++requestGeneration;
+        requestKey=AmapRuntime.key(activity);
         final Trip targetTrip = activity.active;
         final int targetDay = activity.day;
         if (targetTrip == null) return;
@@ -100,7 +114,7 @@ final class AmapPlaceSearch {
             PoiSearchV2 search = new PoiSearchV2(activity, query);
             search.setOnPoiSearchListener(new Listener(generation, targetTrip, targetDay));
             search.searchPOIAsyn();
-        } catch (AMapException | RuntimeException e) {
+        } catch (AMapException | RuntimeException | LinkageError e) {
             if (generation == requestGeneration) {
                 dismissProgress();
                 activity.toast("暂时无法搜索高德地点");
@@ -111,7 +125,7 @@ final class AmapPlaceSearch {
     private void deliver(int generation, Trip targetTrip, int targetDay,
                          PoiResultV2 result, int code) {
         if (generation != requestGeneration) return;
-        if (!alive()) { dismissProgress(); return; }
+        if (!alive() || !requestKey.equals(AmapRuntime.key(activity)) || AmapRuntime.needsRestart(activity)) { dismissProgress(); return; }
         dismissProgress();
         if (code != 1000 || result == null || result.getPois() == null) {
             activity.toast("高德地点搜索失败（" + code + "）");
@@ -137,7 +151,7 @@ final class AmapPlaceSearch {
     }
 
     private void openDraft(PoiItemV2 poi, Trip targetTrip, int targetDay) {
-        if (!alive() || poi == null) return;
+        if (!alive() || poi == null || !requestKey.equals(AmapRuntime.key(activity)) || AmapRuntime.needsRestart(activity)) return;
         if (activity.active != targetTrip) {
             activity.toast("已切换旅行，请在当前行程里重新搜索");
             return;

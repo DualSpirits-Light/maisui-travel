@@ -1,8 +1,5 @@
 plugins { id 'com.android.application' }
 def amapVersion = '11.2.100_loc11.2.100_sea9.8.1'
-def localConfig = new Properties()
-def localConfigFile = rootProject.file('local.properties')
-if (localConfigFile.exists()) localConfigFile.withInputStream { localConfig.load(it) }
 configurations { amapDistribution }
 dependencies { amapDistribution "com.amap.api:3dmap-location-search:${amapVersion}" }
 def unpackAmap = tasks.register('unpackAmap', Sync) {
@@ -23,7 +20,6 @@ android {
     compileSdk 35
     defaultConfig {
         applicationId 'cn.lvxu.travel'
-        manifestPlaceholders = [AMAP_ANDROID_KEY: (System.getenv('AMAP_ANDROID_KEY') ?: localConfig.getProperty('AMAP_ANDROID_KEY', ''))]
         minSdk 26
         targetSdk 35
         versionCode 11

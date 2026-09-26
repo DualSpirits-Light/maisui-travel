@@ -11,7 +11,7 @@ $sdk = (Resolve-Path '../../work/android-sdk').Path
 $jdk = 'D:/Program Files/JetBrains/PyCharm 2025.1.3.1/jbr'
 $buildOut = Join-Path (Resolve-Path '../../work').Path 'build-next-local'
 $signingKey = (Resolve-Path '../../work/signing/debug.jks').Path
-./build-apk.ps1 -SdkPath $sdk -JdkPath $jdk -BuildDirectory $buildOut -SigningKey $signingKey -AmapSdkPath '../../work/vendor/amap-sdk.jar' -AmapKeyFile '../../work/config/amap-android-key.txt' -NetworkLibDirectory '../../work/vendor/network'
+./build-apk.ps1 -SdkPath $sdk -JdkPath $jdk -BuildDirectory $buildOut -SigningKey $signingKey -AmapSdkPath '../../work/vendor/amap-sdk.jar' -NetworkLibDirectory '../../work/vendor/network'
 ```
 
 这些参数构建当前源码版本。开发下一版时同步确认 `app/build.gradle`、`build-apk.ps1`、`ReleaseNotes.java`，不要自行推测版本号。构建目录不可指向已发布的 `build-stage10-release`。
@@ -24,7 +24,7 @@ $env:JAVA_HOME = $jdk
 & "$sdk/build-tools/35.0.0/aapt2.exe" dump badging "$buildOut/lvxu-debug.apk"
 ```
 
-Android SDK Key 在清单注入是预期行为；其他 Web/AI/管理员密钥必须留在用户配置或服务端秘密配置中。依赖列表见 `dependencies-lock.json` 和 `THIRD-PARTY-NOTICES.md`。
+下一版不再在清单注入 Android SDK Key，也不读取构建环境或 local.properties 中的地图 Key；由用户在高级设置配置并在 SDK 初始化前动态设置。Web/AI/管理员密钥必须留在用户配置或服务端秘密配置中。依赖列表见 `dependencies-lock.json` 和 `THIRD-PARTY-NOTICES.md`。
 
 ## 按影响范围验证
 
@@ -39,6 +39,8 @@ try { npm ci; npm test } finally { Pop-Location }
 
 Android：先运行专用模拟器，再安装本次被测 APK。`test-android.ps1` 只安装测试包，不替你安装应用；设备默认 emulator-5580，应先核对序列号。
 
+本机既有 AVD 不在默认用户目录。启动前在当前终端设置 `ANDROID_AVD_HOME` 为 `../../work/avd` 的绝对路径、`ANDROID_USER_HOME` 为 `../../work/android-user` 的绝对路径；再用 SDK 中的 emulator 列出 AVD（当前为 Lvxu）。不要因为默认目录为空就新建或清除已有模拟器。以隐藏窗口、端口 5580 启动，等待 `sys.boot_completed=1` 后测试。
+
 ```powershell
 & "$sdk/platform-tools/adb.exe" devices
 & "$sdk/platform-tools/adb.exe" -s emulator-5580 install -r "$buildOut/lvxu-debug.apk"
@@ -46,6 +48,8 @@ Android：先运行专用模拟器，再安装本次被测 APK。`test-android.p
 ```
 
 更新专项可加 `-StageNineOnly`。测试 APK 必须与被测 App 同签名。模拟器测试不能并行启动多个 instrumentation，会互相终止进程。测试库按 `$buildOut` 的父目录寻找 vendor/network，因此以上布局应保留。
+
+Android Key 配置专项可加 `-MapKeyOnly`；不得与 `-StageNineOnly` 同时使用。它验证配置和入口行为，不代表 ARM 原生地图底图、真实 Key 鉴权或网络路线已通过真机验证。
 
 覆盖升级：以下命令会卸载**指定模拟器**的测试 App，再安装旧包、写入夹具、覆盖新包。仅用于专用模拟器，不可替换为用户手机序列号。
 

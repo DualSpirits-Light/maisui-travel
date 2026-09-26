@@ -6,7 +6,7 @@ final class AmapDetails {
     static void enrich(android.content.Context a,PlaceImporter.Place p)throws Exception{enrich(a,p,false);}
     static boolean refresh(android.content.Context a,PlaceImporter.Place p)throws Exception{return enrich(a,p,true);}
     private static boolean enrich(android.content.Context a,PlaceImporter.Place p,boolean fresh)throws Exception{
-        if(!AmapConsent.granted(a))return false;
+        if(!AmapRuntime.prepare(a))return false;
         return legacySdk(a,p,fresh);
     }
     private static boolean legacySdk(android.content.Context a,PlaceImporter.Place p,boolean fresh)throws Exception{

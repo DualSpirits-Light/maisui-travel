@@ -28,19 +28,39 @@ import java.util.Locale;
 final class AmapUi {
     private final MainActivity a;
     private TextureMapView mapView;
-    private MapUi fallback;
     private boolean resumed,disposed;
+    private final Bundle restoredState;
 
-    AmapUi(MainActivity activity) { a = activity; }
+    AmapUi(MainActivity activity) { this(activity,null); }
+    AmapUi(MainActivity activity,Bundle state) { a = activity; restoredState=state; }
 
     void show(ArrayList<Trip.Stop> stops) {
+        if (!AmapRuntime.configured(a)) {
+            a.body.addView(a.text("使用高德原生地图前，请配置您自己的 Android SDK Key。", 14, MainActivity.MUTED));
+            a.body.addView(a.action("配置高德 Android Key", true,
+                    () -> new AdvancedSettingsUi(a).androidKey(a::render)));
+            a.body.post(() -> { if (!disposed && !a.isFinishing())
+                new AdvancedSettingsUi(a).androidKey(a::render); });
+            return;
+        }
+        if (AmapRuntime.needsRestart(a)) {
+            a.body.addView(a.text("高德 Android Key 已更改。请关闭并重新打开应用后使用地图。",14,MainActivity.ORANGE));
+            return;
+        }
         if (!AmapConsent.granted(a)) {
             a.body.addView(a.action("启用高德地图",true,()->AmapConsent.request(a,a::render)));
             a.space(a.body,12);
         }
-        if (!supportsNativeSdk() || !AmapConsent.granted(a)) {
-            fallback = new MapUi(a);
-            fallback.show(stops);
+        if (!supportsNativeSdk()) {
+            a.body.addView(a.text("当前设备架构不支持内置高德原生地图。请在 ARM 设备上使用地图导览。",14,MainActivity.ORANGE));
+            return;
+        }
+        if (!AmapConsent.granted(a)) {
+            a.body.addView(a.text("同意高德地图隐私说明后，才能显示地图导览。",14,MainActivity.MUTED));
+            return;
+        }
+        if (!AmapRuntime.prepare(a)) {
+            a.body.addView(a.text("高德地图暂不可用，请检查 Android Key 或重启应用。",14,MainActivity.ORANGE));
             return;
         }
         int previousChildren=a.body.getChildCount();
@@ -49,9 +69,7 @@ final class AmapUi {
         } catch (Throwable error) {
             destroyNative();
             while(a.body.getChildCount()>previousChildren)a.body.removeViewAt(a.body.getChildCount()-1);
-            fallback = new MapUi(a);
-            fallback.show(stops);
-            a.toast("原生地图暂不可用，已切换备用地图");
+            a.body.addView(a.text("高德原生地图暂不可用，请检查设备网络或 Android Key。",14,MainActivity.ORANGE));
         }
     }
 
@@ -60,7 +78,7 @@ final class AmapUi {
         for (Trip.Stop stop : stops) if (stop.lat != null && stop.lon != null) known.add(stop);
 
         mapView = new TextureMapView(a);
-        mapView.onCreate(null);
+        mapView.onCreate(restoredState);
         mapView.setOnTouchListener((v, event) -> {
             v.getParent().requestDisallowInterceptTouchEvent(
                     event.getActionMasked() != MotionEvent.ACTION_UP &&
@@ -169,11 +187,10 @@ final class AmapUi {
 
     void resume() { if (mapView != null&&!resumed) {mapView.onResume();resumed=true;} }
     void pause() { if (mapView != null&&resumed) {mapView.onPause();resumed=false;} }
-    void saveState(Bundle state) { if (mapView != null) mapView.onSaveInstanceState(state); }
+    void saveState(Bundle state) { if (mapView != null) {Bundle saved=new Bundle();mapView.onSaveInstanceState(saved);state.putBundle("amap-state",saved);} }
     void destroy() {
         disposed=true;
         destroyNative();
-        if (fallback != null) { fallback.destroy(); fallback = null; }
     }
     private void destroyNative() {
         if (mapView != null) { try{pause();mapView.onDestroy();}catch(RuntimeException ignored){}mapView = null; }

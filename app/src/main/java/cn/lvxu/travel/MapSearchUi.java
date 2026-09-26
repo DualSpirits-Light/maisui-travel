@@ -18,8 +18,14 @@ final class MapSearchUi {
     void show() {
         String provider = new ApiConfig(activity).mapProvider();
         if ("amap".equals(provider)) {
-            // The Android key is supplied in the application manifest at build time. Do not
-            // send it to a REST endpoint or require a separately configured Web Service key.
+            if (!AmapRuntime.configured(activity)) {
+                new AdvancedSettingsUi(activity).androidKey(this::show);
+                return;
+            }
+            if (AmapRuntime.needsRestart(activity)) {
+                activity.toast("高德 Android Key 已更改，请重启应用后搜索");
+                return;
+            }
             new AmapPlaceSearch(activity).search("");
             return;
         }
