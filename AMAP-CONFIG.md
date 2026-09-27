@@ -13,3 +13,5 @@
 高德可选 REST、百度服务端、腾讯 WebService、AI 与 WebDAV 凭据由用户在 App 配置验证后保存；不要写入源码、发布包或备份。真实接口历史验证见[第三阶段记录](docs/superpowers/plans/2026-09-14-stage3-checkpoint.md)。
 
 [历史原文](docs/history/AMAP-CONFIG-before-organization-2026-09-24.md)中另一张“独立正式签名”证书不是当前发布签名，不能用于覆盖升级。
+
+下一版地图导览分为两类凭据：原生底图和 SDK 地点搜索使用 Android Key；真实道路路线查询使用高德 Web 服务 Key（REST）。路线缺少后者时会直接打开配置窗口，验证保存后回到当前行程。交通采用终点的“抵达方式”；缺少坐标或无可用道路数据时不画直线替代。火车、飞机等暂不作为道路路线查询。

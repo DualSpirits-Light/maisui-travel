@@ -9,10 +9,11 @@ param(
     [string]$SigningAlias='androiddebugkey',
     [string]$SigningPasswordEnv='',
     [switch]$StageNineOnly,
-    [switch]$MapKeyOnly
+    [switch]$MapKeyOnly,
+    [switch]$StageTwoMapOnly
 )
 $ErrorActionPreference='Stop'
-if($StageNineOnly -and $MapKeyOnly){throw 'Choose only one focused test suite.'}
+if((@($StageNineOnly,$MapKeyOnly,$StageTwoMapOnly) | Where-Object { $_ }).Count -gt 1){throw 'Choose only one focused test suite.'}
 if($Device -notmatch '^emulator-\d+$'){throw 'Run these integration tests on a disposable emulator only.'}
 $SdkPath=(Resolve-Path -LiteralPath $SdkPath).Path
 $JdkPath=(Resolve-Path -LiteralPath $JdkPath).Path
@@ -48,6 +49,7 @@ Invoke-Checked "$SdkPath/platform-tools/adb.exe" @('-s',$Device,'install','-r',"
 $instrumentArgs=@('-s',$Device,'shell','am','instrument','-w')
 if($StageNineOnly){$instrumentArgs+=@('-e','stageNineOnly','true')}
 if($MapKeyOnly){$instrumentArgs+=@('-e','mapKeyOnly','true')}
+if($StageTwoMapOnly){$instrumentArgs+=@('-e','stageTwoMapOnly','true')}
 $instrumentArgs+='cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation'
 $testOutput = & "$SdkPath/platform-tools/adb.exe" @instrumentArgs
 $testExit = $LASTEXITCODE

@@ -4,8 +4,10 @@ import android.text.InputType;
 import android.widget.*;
 
 final class AdvancedSettingsUi {
- private final MainActivity a;private final ApiConfig config;
- AdvancedSettingsUi(MainActivity a){this.a=a;config=new ApiConfig(a);}
+ interface MapVerifier {void verify(String id,String key)throws Exception;}
+ private final MainActivity a;private final ApiConfig config;private final MapVerifier verifier;
+ AdvancedSettingsUi(MainActivity a){this(a,MapService::validate);}
+ AdvancedSettingsUi(MainActivity a,MapVerifier verifier){this.a=a;config=new ApiConfig(a);this.verifier=verifier;}
  void show(){PageUi page=new PageUi(a,"高级设置");LinearLayout box=page.body;
   box.addView(a.bold("地图服务",20,MainActivity.INK));Spinner provider=a.select(box,"地图服务商",MapService.NAMES,MapService.name(config.mapProvider()));
   box.addView(a.action("应用地图服务商",false,()->{try{config.put("mapProvider",MapService.IDS[provider.getSelectedItemPosition()]);a.toast("地图服务已切换");a.render();}catch(Exception e){a.toast("设置未能保存，请重试");}}));
@@ -50,7 +52,8 @@ final class AdvancedSettingsUi {
   });});d.show();return d;
  }
  private android.widget.ScrollView scroll(LinearLayout form){android.widget.ScrollView view=new android.widget.ScrollView(a);view.addView(form);return view;}
- private void mapKey(String id){
+ void mapKey(String id){mapKey(id,null);}
+ AlertDialog mapKey(String id,Runnable afterSave){
   LinearLayout f=a.col();a.pad(f,20);
   f.addView(a.text("amap".equals(id)?"此处是可选的 Web 服务密钥，与高级设置中的高德 Android SDK Key 分开保存。请勿填写 Android 平台密钥。":"当前接入使用 Web 服务接口，需要服务端 / Web 服务类型的密钥。Android 平台密钥不适用于此处。",13,MainActivity.MUTED));
   EditText key=secret(a,f,"Web 服务 Key / AK",config.mapKey(id));
@@ -60,13 +63,13 @@ final class AdvancedSettingsUi {
    String candidate=key.getText().toString().trim();error.setVisibility(android.view.View.VISIBLE);
    if(candidate.isEmpty()){error.setText("请输入 Web 服务 Key / AK");return;}
    final long startRevision=config.revision();key.setEnabled(false);d.getButton(-1).setEnabled(false);d.getButton(-3).setEnabled(false);error.setText("正在验证 Web 服务…");
-   new Thread(()->{String failure=null;try{MapService.validate(id,candidate);}catch(Exception e){failure=e.getMessage()==null?"验证失败，请重试":e.getMessage();}final String result=failure;
+   new Thread(()->{String failure=null;try{verifier.verify(id,candidate);}catch(Exception e){failure=e.getMessage()==null?"验证失败，请重试":e.getMessage();}final String result=failure;
     a.runOnUiThread(()->{if(!d.isShowing()||a.isDestroyed()||a.isFinishing())return;key.setEnabled(true);d.getButton(-1).setEnabled(true);d.getButton(-3).setEnabled(true);
      if(result!=null){error.setText(result);return;}
-     try{if(!config.putIfRevision(startRevision,"mapKey."+id,candidate)){error.setText("配置已变更，请重新验证后保存");return;}d.dismiss();a.toast("验证成功，已保存");}catch(Exception e){error.setText("保存失败，请重试");}
+     try{if(!config.putIfRevision(startRevision,"mapKey."+id,candidate)){error.setText("配置已变更，请重新验证后保存");return;}d.dismiss();a.toast("验证成功，已保存");if(afterSave!=null)afterSave.run();}catch(Exception e){error.setText("保存失败，请重试");}
     });
    },"map-config-check").start();
-  }));d.show();
+  }));d.show();return d;
  }
  private void scenery(){LinearLayout f=a.col();EditText url=a.field(f,"HTTPS 图片地址（留空使用默认）",config.scenery(),InputType.TYPE_TEXT_VARIATION_URI);a.dialog("首页随机风景接口",f,()->{String value=url.getText().toString().trim();if(!value.isEmpty())ApiHttp.url(value);try{config.put("scenery",value);a.toast("风景接口已保存");}catch(Exception e){throw new IllegalArgumentException("设置未能保存");}},null);}
  private void prompt(){LinearLayout f=a.col();EditText value=a.field(f,"默认提示词",config.prompt(),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);value.setMinLines(8);f.addView(a.action("恢复默认提示词",false,()->value.setText(ApiConfig.DEFAULT_PROMPT)));a.dialog("AI 规划默认提示词",f,()->{try{config.put("prompt",a.required(value,8000));a.toast("提示词已保存");}catch(Exception e){throw new IllegalArgumentException("请输入不超过 8000 字的提示词");}},null);}

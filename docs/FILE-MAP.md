@@ -6,7 +6,7 @@
 | --- | --- |
 | `app/src/main/java/cn/lvxu/travel/` | Android 主逻辑；MainActivity、Trip、TripStore、AppPrefs 为基础入口 |
 | 同目录 ThemeColors / ThemeSettingsUi / RoundedDialogs / TripPickerUi | 配色、圆角弹窗和旅行切换 |
-| 同目录 MapService / MapRoutes / AmapPlaceSearch / ApiConfig / AiProviders | 地图、平台密钥、AI 接入 |
+| 同目录 MapService / MapRoutes / AmapUi / AmapRoadRoutes / AmapRouteSession / AmapPlaceSearch / ApiConfig / AiProviders | 地图、平台密钥、AI 接入 |
 | 同目录 CheckinUi / CheckinHistoryUi / PhotoEditorUi / LocationSession | 打卡、照片编辑与定位 |
 | 同目录 TripShareArchive / BackupArchive / WebDavService | 分享、备份、WebDAV |
 | 同目录 UpdateService / UpdateDownloads / UpdateDownloadService / UpdateUi | 清单、校验、下载服务、前台窗口与通知 |

@@ -31,10 +31,6 @@ final class MapSearchUi {
         }
 
         MapService service = new MapService(activity);
-        if (!service.configured()) {
-            activity.toast("请先在高级设置中配置 " + service.name() + " Web 服务 Key");
-            return;
-        }
         if (activity.active == null) {
             activity.toast("请先创建旅行");
             return;
@@ -50,10 +46,15 @@ final class MapSearchUi {
                 activity.toast("请输入地点名称");
                 return;
             }
-            results.removeAllViews();
-            results.addView(activity.text("正在搜索…", 14, MainActivity.MUTED));
-            new Thread(() -> searchWebProvider(service, query, target, day, page, results),
-                    "map-search").start();
+            Runnable search = () -> {
+                if (!page.alive() || activity.isFinishing() || activity.isDestroyed()) return;
+                results.removeAllViews();
+                results.addView(activity.text("正在搜索…", 14, MainActivity.MUTED));
+                new Thread(() -> searchWebProvider(service, query, target, day, page, results),
+                        "map-search").start();
+            };
+            if (!service.configured()) new AdvancedSettingsUi(activity).mapKey(provider, search);
+            else search.run();
         });
         page.body.addView(submit);
         page.body.addView(results);
