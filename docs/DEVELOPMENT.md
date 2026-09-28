@@ -88,3 +88,17 @@ Wrangler OAuth、Git 凭据从本机既有登录读取，不写入项目。`../.
 ## 下一版地图第二阶段专项
 
 `test-android.ps1 -StageTwoMapOnly` 用于真实路线解析与缺 Key 配置交互的离线回归，与其他专项开关互斥。先构建并安装当次应用，再运行测试；结果与线上服务调用、原生地图底图验收分别记录。
+
+## 下一版行程第三阶段专项
+
+`test-android.ps1 -StageThreeItineraryOnly` 覆盖导出快照、长图分页与图库回滚、时间轴触摸排序、预览及取消/保存。须安装与当前源码对应的应用 APK，不能只更新测试包；与其他专项参数互斥。
+
+`tests/cn/lvxu/travel/ItineraryFormatTest.java` 是独立日期/时间格式检查，可用 Java 与 `../../work/json.jar` 编译 Trip、ItineraryFormat 后执行。
+
+专项在专用模拟器 `externalFiles/stage3-evidence` 留下 demo 截图及长图，用于目视检查；只含合成示例。API 29+ 真实 MediaStore 测试会删除其创建的唯一测试图片，既有用户媒体不参与。旧版写入权限分支的逻辑测试不能替代 Android 8/9 真机验收。
+
+## 下一版 AI 与回忆专项
+
+`test-android.ps1 -AiMemoriesOnly` 运行 AI 预览/建议交互、打卡地点关联/按天浏览及完整 ZIP 分享关联验证。与其他专项互斥，须先构建并安装最新应用。使用合成 AI 响应，不调用付费接口；此结果不能描述成新的真实 AI 服务验证。
+
+统一开发输出使用 `../../work/build-next-integrated-0928`；此前阶段目录只保留历史证据。当前范围连续推进，用户要求暂停时再保存检查点，正式发布需另行授权。

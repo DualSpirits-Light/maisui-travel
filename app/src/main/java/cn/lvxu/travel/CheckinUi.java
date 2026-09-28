@@ -22,6 +22,7 @@ public final class CheckinUi {
     final MainActivity a; final MediaController media; final Handler main=new Handler(Looper.getMainLooper());
     private final ArrayList<String> groupPhotos=new ArrayList<>(),sceneryPhotos=new ArrayList<>();private EditText place,mood,time,companions;private TextView locationStatus,photoState;private AlertDialog editor;private int draftGeneration,activeDraft;private Trip.Checkin editing;
     private Trip historyTrip;
+    private String memoryDay="",draftStopId="";private TextView associationStatus;
     private Double lat,lon;private float accuracy;private LocationManager locationManager;private LocationListener listener;private Runnable timeout;private LocationSession locationSession;private ExecutorService reverseGeocoder;private int locationResultGeneration;
     private String pendingExport;
 
@@ -30,7 +31,7 @@ public final class CheckinUi {
     public void show(){
         if(historyTrip==null){
             a.heading("旅行打卡","按旅行整理你的打卡记录。选择一个旅行查看记录。");
-            CheckinHistoryUi.addTripGroups(a,a.trips,trip->{historyTrip=trip;a.active=trip;a.page=4;a.render();});
+            CheckinHistoryUi.addTripGroups(a,a.trips,trip->{historyTrip=trip;memoryDay="";a.active=trip;a.page=4;a.render();});
             return;
         }
         if(!a.trips.contains(historyTrip)){historyTrip=null;show();return;}
@@ -38,12 +39,15 @@ public final class CheckinUi {
         a.pair(a.body,a.action("← 所有旅行",false,()->{historyTrip=null;a.render();}),a.action("＋ 新建打卡",true,this::beginNew));
         a.space(a.body,8);
         a.body.addView(a.action("选择照片打卡",false,()->{beginNew();media.chooseCheckinPhoto();}));
+        a.space(a.body,8);
+        a.body.addView(a.action("按天浏览："+(empty(memoryDay)?"全部日期":CheckinMemories.dayLabel(historyTrip,memoryDay)),false,this::chooseMemoryDay));
         a.section("打卡记录");
         Trip owner=historyTrip;
         if(owner.checkins.isEmpty())a.body.addView(a.text("该旅行还没有打卡记录。可以拍照，也可以手动从相册选择。",14,MainActivity.MUTED));
-        ArrayList<Trip.Checkin> list=CheckinGroups.records(owner);
+        ArrayList<Trip.Checkin> list=CheckinMemories.records(owner,memoryDay);
+        if(list.isEmpty()&&!owner.checkins.isEmpty())a.body.addView(a.text("这一天还没有打卡回忆。可选择其他日期或新建打卡。",14,MainActivity.MUTED));
         int previewCount=0;for(Trip.Checkin c:list){LinearLayout box=a.card(a.body);String preview=primaryPhoto(c);if(!empty(preview)&&previewCount<12){try{Bitmap b=media.files.decode(preview,480);box.addView(CheckinHistoryUi.squareThumbnail(a,b,160));a.space(box,14);previewCount++;}catch(Exception ignored){}}
-            box.addView(a.bold(empty(c.place)?"旅途中的此刻":c.place,19,MainActivity.INK));a.space(box,6);box.addView(a.text(CheckinGroups.recordSubtitle(c),13,MainActivity.MUTED));a.space(box,12);a.pair(box,a.action("编辑",false,()->beginEdit(c)),a.action("生成电子卡片",false,()->generateAndShare(c)));a.space(box,8);box.addView(a.action("删除",false,()->a.confirm("删除这条打卡？",()->{if(CheckinGroups.ownerOf(a.trips,c)!=owner)return;owner.checkins.remove(c);a.active=owner;a.changed();})));}
+            box.addView(a.bold(empty(c.place)?"旅途中的此刻":c.place,19,MainActivity.INK));a.space(box,6);box.addView(a.text(CheckinGroups.recordSubtitle(c),13,MainActivity.MUTED));a.space(box,6);box.addView(a.text(CheckinMemories.linkLabel(owner,c),12,MainActivity.MUTED));addPhotoAction(box,c);a.space(box,12);a.pair(box,a.action("编辑",false,()->beginEdit(c)),a.action("生成电子卡片",false,()->generateAndShare(c)));a.space(box,8);box.addView(a.action("删除",false,()->a.confirm("删除这条打卡？",()->{if(CheckinGroups.ownerOf(a.trips,c)!=owner)return;owner.checkins.remove(c);a.active=owner;a.changed();})));}
     }
 
     void beginNew(){beginNew("");}
@@ -52,19 +56,53 @@ public final class CheckinUi {
         if(trip==null||stop==null||!a.trips.contains(trip)||!trip.stops.contains(stop)){a.toast("所属旅行已删除，无法新建打卡");return;}
         CheckinPrefill.Draft draft=CheckinPrefill.forStop(trip,stop);
         historyTrip=draft.trip;a.active=draft.trip;a.day=Math.max(0,Math.min(stop.day,draft.trip.days-1));a.page=4;a.render();
-        beginNew(draft.place);
+        beginNew(draft.place);draftStopId=stop.id;updateAssociation();
     }
-    private void beginNew(String prefilledPlace){editing=null;groupPhotos.clear();sceneryPhotos.clear();lat=null;lon=null;accuracy=0;activeDraft=++draftGeneration;editNew(prefilledPlace);}
+    private void beginNew(String prefilledPlace){editing=null;draftStopId="";groupPhotos.clear();sceneryPhotos.clear();lat=null;lon=null;accuracy=0;activeDraft=++draftGeneration;editNew(prefilledPlace);}
     void beginEdit(Trip.Checkin c){
-        if(c==null||historyTrip==null||CheckinGroups.ownerOf(a.trips,c)!=historyTrip){a.toast("这条打卡已不属于当前旅行");return;}
-        a.active=historyTrip;editing=c;groupPhotos.clear();groupPhotos.addAll(c.groupPhotos);if(groupPhotos.isEmpty()&&!empty(c.photo))groupPhotos.add(c.photo);sceneryPhotos.clear();sceneryPhotos.addAll(c.sceneryPhotos);lat=c.lat;lon=c.lon;accuracy=c.accuracy;activeDraft=++draftGeneration;editNew();
+        Trip owner=CheckinGroups.ownerOf(a.trips,c);if(owner==null){a.toast("这条打卡已不属于当前旅行");return;}historyTrip=owner;
+        a.active=historyTrip;editing=c;draftStopId=c.stopId;groupPhotos.clear();groupPhotos.addAll(c.groupPhotos);if(groupPhotos.isEmpty()&&!empty(c.photo))groupPhotos.add(c.photo);sceneryPhotos.clear();sceneryPhotos.addAll(c.sceneryPhotos);lat=c.lat;lon=c.lon;accuracy=c.accuracy;activeDraft=++draftGeneration;editNew();
     }
     private void editNew(){editNew("");}
     private void editNew(String prefilledPlace){
         if(activeDraft==0)activeDraft=++draftGeneration;LinearLayout f=a.col();photoState=a.text(photoSummary(),13,MainActivity.MUTED);f.addView(photoState);a.space(f,8);a.pair(f,a.action("添加合照",false,()->media.chooseCheckinPhoto("group")),a.action("添加风景",false,()->media.chooseCheckinPhoto("scenery")));a.space(f,8);f.addView(a.action("移除最后一张照片",false,this::removeLastPhoto));a.space(f,12);
+        associationStatus=a.text("",12,MainActivity.MUTED);f.addView(associationStatus);f.addView(a.action("选择关联行程地点",false,this::chooseAssociation));updateAssociation();a.space(f,8);
         place=a.field(f,"地点",editing==null?prefilledPlace:editing.place,android.text.InputType.TYPE_CLASS_TEXT);mood=a.field(f,"此刻心情",editing==null?"开心":editing.mood,android.text.InputType.TYPE_CLASS_TEXT);time=DateTimeFields.dateTime(a,f,"日期与时间",editing==null?LocalDateTime.now().withSecond(0).withNano(0).toString():editing.time);companions=a.field(f,"同行人员（每行一位）",editing==null?"":String.join("\n",editing.companions),android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);locationStatus=a.text(lat==null?"定位未开启；地点也可以手动填写。":String.format(Locale.ROOT,"位置已记录 · %.5f, %.5f",lat,lon),12,MainActivity.MUTED);f.addView(locationStatus);a.space(f,8);f.addView(a.action("使用当前位置",false,this::requestLocation));
         ScrollView scroll=new ScrollView(a);scroll.addView(f);editor=new RoundedDialogs.Builder(a).setTitle(editing==null?"新建打卡":"编辑打卡").setView(scroll).setNegativeButton("取消",null).setPositiveButton("保存",null).create();a.pad(f,22);
-        editor.setOnShowListener(v->editor.getButton(-1).setOnClickListener(w->{try{Trip owner=historyTrip==null?a.active:historyTrip;if(owner==null||!a.trips.contains(owner))throw new IllegalArgumentException("请先选择旅行");if(editing!=null&&CheckinGroups.ownerOf(a.trips,editing)!=owner)throw new IllegalArgumentException("这条打卡已不属于当前旅行");if(editing==null&&owner.checkins.size()>=1000)throw new IllegalArgumentException("每段旅行最多保存 1000 条打卡");String p=place.getText().toString().trim(),m=mood.getText().toString().trim();if(p.length()>120||m.length()>80)throw new IllegalArgumentException("地点最多 120 字，心情最多 80 字");String entered=time.getText().toString().trim();LocalDateTime when=DateTimeFields.parseDateTime(entered,null);if(when==null)throw new IllegalArgumentException("日期时间格式应为 2026-09-07 18:30");Trip.Checkin c=editing==null?new Trip.Checkin():editing;c.id=empty(c.id)?UUID.randomUUID().toString():c.id;c.groupPhotos.clear();c.groupPhotos.addAll(groupPhotos);c.sceneryPhotos.clear();c.sceneryPhotos.addAll(sceneryPhotos);c.photo=primaryPhoto(c);c.place=p;c.mood=m;c.time=DateTimeFields.storageDateTime(entered);c.companions.clear();for(String person:companions.getText().toString().split("\\n")){person=person.trim();if(!person.isEmpty())c.companions.add(person);}if(c.companions.size()>50)throw new IllegalArgumentException("同行人员最多 50 位");c.lat=lat;c.lon=lon;c.accuracy=accuracy;c.coordinateSystem="WGS84";if(editing==null)owner.checkins.add(c);a.active=owner;editor.dismiss();groupPhotos.clear();sceneryPhotos.clear();lat=null;lon=null;accuracy=0;editing=null;activeDraft=0;a.changed();}catch(Exception e){a.toast(e instanceof IllegalArgumentException?e.getMessage():"日期时间格式应为 2026-09-07 18:30");}}));editor.setOnDismissListener(v->{stopLocation();if(activeDraft!=0&&editor!=null&&!editor.isShowing())draftGeneration++;});editor.show();
+        editor.setOnShowListener(v->editor.getButton(-1).setOnClickListener(w->{try{Trip owner=historyTrip==null?a.active:historyTrip;if(owner==null||!a.trips.contains(owner))throw new IllegalArgumentException("请先选择旅行");if(editing!=null&&CheckinGroups.ownerOf(a.trips,editing)!=owner)throw new IllegalArgumentException("这条打卡已不属于当前旅行");if(editing==null&&owner.checkins.size()>=1000)throw new IllegalArgumentException("每段旅行最多保存 1000 条打卡");String p=place.getText().toString().trim(),m=mood.getText().toString().trim();if(p.length()>120||m.length()>80)throw new IllegalArgumentException("地点最多 120 字，心情最多 80 字");String entered=time.getText().toString().trim();LocalDateTime when=DateTimeFields.parseDateTime(entered,null);if(when==null)throw new IllegalArgumentException("日期时间格式应为 2026-09-07 18:30");ArrayList<String> people=new ArrayList<>();for(String person:companions.getText().toString().split("\\n")){person=person.trim();if(!person.isEmpty())people.add(person);}if(people.size()>50)throw new IllegalArgumentException("同行人员最多 50 位");Trip.Checkin c=editing==null?new Trip.Checkin():editing;c.id=empty(c.id)?UUID.randomUUID().toString():c.id;c.groupPhotos.clear();c.groupPhotos.addAll(groupPhotos);c.sceneryPhotos.clear();c.sceneryPhotos.addAll(sceneryPhotos);c.photo=primaryPhoto(c);c.stopId=draftStopId;c.place=p;c.mood=m;c.time=DateTimeFields.storageDateTime(entered);c.companions.clear();c.companions.addAll(people);c.lat=lat;c.lon=lon;c.accuracy=accuracy;c.coordinateSystem="WGS84";if(editing==null)owner.checkins.add(c);a.active=owner;editor.dismiss();groupPhotos.clear();sceneryPhotos.clear();lat=null;lon=null;accuracy=0;editing=null;activeDraft=0;a.changed();}catch(Exception e){a.toast(e instanceof IllegalArgumentException?e.getMessage():"日期时间格式应为 2026-09-07 18:30");}}));editor.setOnDismissListener(v->{stopLocation();if(activeDraft!=0&&editor!=null&&!editor.isShowing())draftGeneration++;});editor.show();
+    }
+
+    private void chooseMemoryDay(){
+        ArrayList<String> keys=CheckinMemories.days(historyTrip);String[] labels=new String[keys.size()+1];labels[0]="全部日期";
+        for(int i=0;i<keys.size();i++)labels[i+1]=CheckinMemories.dayLabel(historyTrip,keys.get(i));
+        new RoundedDialogs.Builder(a).setTitle("按天浏览回忆").setItems(labels,(d,i)->{memoryDay=i==0?"":keys.get(i-1);a.render();}).show();
+    }
+    private void updateAssociation(){
+        if(associationStatus==null)return;Trip.Checkin preview=new Trip.Checkin();preview.stopId=draftStopId;
+        preview.place=editing==null?"":editing.place;associationStatus.setText(CheckinMemories.linkLabel(historyTrip==null?a.active:historyTrip,preview));
+    }
+    private void chooseAssociation(){
+        Trip owner=historyTrip==null?a.active:historyTrip;if(owner==null)return;
+        ArrayList<Trip.Stop> stops=new ArrayList<>(owner.stops);String[] labels=new String[stops.size()+1];labels[0]="不关联行程地点";
+        for(int i=0;i<stops.size();i++){Trip.Stop stop=stops.get(i);labels[i+1]="第 "+(stop.day+1)+" 天 · "+stop.time+" · "+stop.name+(empty(stop.address)?"":" · "+stop.address);}
+        new RoundedDialogs.Builder(a).setTitle("关联地点（请核对日期和地址）").setItems(labels,(d,i)->{
+            if(i==0)draftStopId="";else{Trip.Stop selected=stops.get(i-1);if(!owner.stops.contains(selected)){a.toast("地点已删除，请重新选择");return;}draftStopId=selected.id;if(place!=null&&empty(place.getText().toString()))place.setText(selected.name);}updateAssociation();
+        }).show();
+    }
+    private void addPhotoAction(LinearLayout box,Trip.Checkin record){
+        ArrayList<String> photos=CheckinMemories.photos(record);if(photos.isEmpty())return;a.space(box,6);
+        box.addView(a.action("查看打卡照片（"+photos.size()+" 张）",false,()->{
+            String[] labels=new String[photos.size()];for(int i=0;i<labels.length;i++)labels[i]="照片 "+(i+1);
+            new RoundedDialogs.Builder(a).setTitle("打卡照片").setItems(labels,(d,i)->PhotoPreviewUi.show(a,photos.get(i))).show();
+        }));
+    }
+    void showPlaceMemories(Trip trip,Trip.Stop stop){
+        if(trip==null||stop==null||!a.trips.contains(trip)||!trip.stops.contains(stop)){a.toast("地点已删除");return;}
+        PageUi page=new PageUi(a,"地点回忆 · "+stop.name);ArrayList<Trip.Checkin> records=CheckinMemories.forStop(trip,stop);
+        if(records.isEmpty())page.body.addView(a.text("还没有明确关联到此地点的打卡。旧记录可在旅行打卡中编辑并选择关联地点。",14,MainActivity.MUTED));
+        for(Trip.Checkin record:records){LinearLayout card=a.card(page.body);card.addView(a.bold(empty(record.place)?stop.name:record.place,18,MainActivity.INK));card.addView(a.text(CheckinGroups.recordSubtitle(record),13,MainActivity.MUTED));addPhotoAction(card,record);
+            card.addView(a.action("编辑这条打卡",false,()->{page.dialog.dismiss();historyTrip=trip;a.active=trip;beginEdit(record);}));}
+        page.body.addView(a.action("以此地点新建打卡",true,()->{page.dialog.dismiss();beginNew(trip,stop);}));page.show();
     }
 
     private void pickDateTime(){LocalDateTime current=DateTimeFields.parseDateTime(time==null?"":time.getText().toString(),LocalDateTime.now());final LocalDateTime base=current;new DatePickerDialog(a,(picker,y,m,d)->new TimePickerDialog(a,(clock,h,min)->time.setText(DateTimeValues.normalize(LocalDateTime.of(y,m+1,d,h,min).toString())),base.getHour(),base.getMinute(),true).show(),base.getYear(),base.getMonthValue()-1,base.getDayOfMonth()).show();}
@@ -109,8 +147,8 @@ public final class CheckinUi {
     private void exportCard(String relative){if(relative==null)return;if(Build.VERSION.SDK_INT>=29){Uri uri=null;try{ContentValues v=new ContentValues();v.put(MediaStore.Images.Media.DISPLAY_NAME,"麦穗旅序-打卡-"+System.currentTimeMillis()+".jpg");v.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");v.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/麦穗旅序");v.put(MediaStore.Images.Media.IS_PENDING,1);uri=a.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,v);if(uri==null)throw new IOException();copy(relative,uri);v.clear();v.put(MediaStore.Images.Media.IS_PENDING,0);a.getContentResolver().update(uri,v,null,null);a.toast("电子卡片已保存到相册");}catch(Exception e){if(uri!=null)try{a.getContentResolver().delete(uri,null,null);}catch(Exception ignored){}a.toast("卡片已保存在应用内，但无法写入相册");}}else{pendingExport=relative;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("image/jpeg").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"麦穗旅序-打卡.jpg");a.startActivityForResult(i,MediaController.EXPORT_CARD);}}
     boolean onResult(int req,int result,Intent data){if(req!=MediaController.EXPORT_CARD)return false;if(result==Activity.RESULT_OK&&data!=null&&data.getData()!=null&&pendingExport!=null){try{copy(pendingExport,data.getData());a.toast("电子卡片已保存");}catch(Exception e){a.toast("保存电子卡片失败");}}pendingExport=null;return true;}
     private void copy(String relative,Uri dest)throws IOException{try(InputStream in=new FileInputStream(media.files.file(relative));OutputStream out=a.getContentResolver().openOutputStream(dest,"w")){if(out==null)throw new IOException();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}}
-    void saveState(Bundle b){if(pendingExport!=null)b.putString("checkin.export",pendingExport);b.putStringArrayList("checkin.group",new ArrayList<>(groupPhotos));b.putStringArrayList("checkin.scenery",new ArrayList<>(sceneryPhotos));if(lat!=null)b.putDouble("checkin.lat",lat);if(lon!=null)b.putDouble("checkin.lon",lon);b.putFloat("checkin.accuracy",accuracy);if(editor!=null&&editor.isShowing()){b.putBoolean("checkin.editing",true);if(editing!=null)b.putString("checkin.editingId",editing.id);b.putString("checkin.place",place.getText().toString());b.putString("checkin.mood",mood.getText().toString());b.putString("checkin.time",time.getText().toString());b.putString("checkin.companions",companions.getText().toString());}}
-    void restoreState(Bundle b){pendingExport=b.getString("checkin.export");groupPhotos.clear();ArrayList<String> group=b.getStringArrayList("checkin.group");if(group!=null)groupPhotos.addAll(group);sceneryPhotos.clear();ArrayList<String> scenery=b.getStringArrayList("checkin.scenery");if(scenery!=null)sceneryPhotos.addAll(scenery);if(b.containsKey("checkin.lat"))lat=b.getDouble("checkin.lat");if(b.containsKey("checkin.lon"))lon=b.getDouble("checkin.lon");accuracy=b.getFloat("checkin.accuracy");if(b.getBoolean("checkin.editing")){String editingId=b.getString("checkin.editingId","");editing=null;if(a.active!=null&&!editingId.isEmpty())for(Trip.Checkin candidate:a.active.checkins)if(editingId.equals(candidate.id)){editing=candidate;break;}String savedPlace=b.getString("checkin.place",""),savedMood=b.getString("checkin.mood","开心"),savedTime=b.getString("checkin.time",LocalDateTime.now().withSecond(0).withNano(0).toString()),savedCompanions=b.getString("checkin.companions","");main.post(()->{if(a.isFinishing()||a.isDestroyed())return;editNew();place.setText(savedPlace);mood.setText(savedMood);time.setText(savedTime);companions.setText(savedCompanions);if(lat!=null&&lon!=null)locationStatus.setText(String.format(Locale.ROOT,"位置已获取 · %.5f, %.5f",lat,lon));});}}
+    void saveState(Bundle b){if(historyTrip!=null)b.putString("checkin.tripId",historyTrip.id);b.putString("checkin.memoryDay",memoryDay);b.putString("checkin.stopId",draftStopId);if(pendingExport!=null)b.putString("checkin.export",pendingExport);b.putStringArrayList("checkin.group",new ArrayList<>(groupPhotos));b.putStringArrayList("checkin.scenery",new ArrayList<>(sceneryPhotos));if(lat!=null)b.putDouble("checkin.lat",lat);if(lon!=null)b.putDouble("checkin.lon",lon);b.putFloat("checkin.accuracy",accuracy);if(editor!=null&&editor.isShowing()){b.putBoolean("checkin.editing",true);if(editing!=null)b.putString("checkin.editingId",editing.id);b.putString("checkin.place",place.getText().toString());b.putString("checkin.mood",mood.getText().toString());b.putString("checkin.time",time.getText().toString());b.putString("checkin.companions",companions.getText().toString());}}
+    void restoreState(Bundle b){String tripId=b.getString("checkin.tripId","");for(Trip trip:a.trips)if(tripId.equals(trip.id)){historyTrip=trip;break;}memoryDay=b.getString("checkin.memoryDay","");draftStopId=b.getString("checkin.stopId","");pendingExport=b.getString("checkin.export");groupPhotos.clear();ArrayList<String> group=b.getStringArrayList("checkin.group");if(group!=null)groupPhotos.addAll(group);sceneryPhotos.clear();ArrayList<String> scenery=b.getStringArrayList("checkin.scenery");if(scenery!=null)sceneryPhotos.addAll(scenery);if(b.containsKey("checkin.lat"))lat=b.getDouble("checkin.lat");if(b.containsKey("checkin.lon"))lon=b.getDouble("checkin.lon");accuracy=b.getFloat("checkin.accuracy");if(b.getBoolean("checkin.editing")){String editingId=b.getString("checkin.editingId","");editing=null;Trip restoreOwner=historyTrip==null?a.active:historyTrip;if(restoreOwner!=null&&!editingId.isEmpty())for(Trip.Checkin candidate:restoreOwner.checkins)if(editingId.equals(candidate.id)){editing=candidate;break;}String savedPlace=b.getString("checkin.place",""),savedMood=b.getString("checkin.mood","开心"),savedTime=b.getString("checkin.time",LocalDateTime.now().withSecond(0).withNano(0).toString()),savedCompanions=b.getString("checkin.companions","");main.post(()->{if(a.isFinishing()||a.isDestroyed())return;editNew();place.setText(savedPlace);mood.setText(savedMood);time.setText(savedTime);companions.setText(savedCompanions);if(lat!=null&&lon!=null)locationStatus.setText(String.format(Locale.ROOT,"位置已获取 · %.5f, %.5f",lat,lon));});}}
     static String displayTime(String iso){try{return LocalDateTime.parse(iso).format(DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm"));}catch(Exception e){return iso==null?"":iso;}}
     static boolean empty(String s){return s==null||s.trim().isEmpty();}
 }

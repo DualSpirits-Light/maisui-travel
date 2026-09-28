@@ -6,7 +6,7 @@ import java.util.*;
 /** Strict, deliberately small boundary between model text and local trip data. */
 final class AiPlan {
  static final class Day { final int day; String title="",summary=""; final ArrayList<Item> items=new ArrayList<>(); Day(int day){this.day=day;} }
- static final class Item { String name,time,note,address=""; int duration; long cost; Double lat,lon; boolean verifyNeeded; }
+ static final class Item { String name,time,note,address=""; int duration; long cost; Double lat,lon; boolean verifyNeeded,selected=true; }
  final ArrayList<Day> days=new ArrayList<>(); long budgetCents; String currency="CNY",title="",summary="",theme=""; final ArrayList<String> tips=new ArrayList<>();
  static String extractJson(String text){
   if(text==null)throw new IllegalArgumentException("AI 未返回内容");
@@ -32,7 +32,13 @@ final class AiPlan {
    if(itemCount==0)throw new IllegalArgumentException("AI 未提供可用地点");if(!"CNY".equalsIgnoreCase(out.currency)&&!"RMB".equalsIgnoreCase(out.currency))throw new IllegalArgumentException("当前只支持人民币预算");out.days.sort(Comparator.comparingInt(x->x.day));return out;
   }catch(JSONException e){throw new IllegalArgumentException("AI 返回的行程格式无效");}
  }
- ArrayList<Trip.Stop> toStops(){ArrayList<Trip.Stop> out=new ArrayList<>();for(Day d:days)for(int i=0;i<d.items.size();i++){Item item=d.items.get(i);Trip.Stop stop=new Trip.Stop();stop.name=item.name;stop.time=item.time;stop.duration=item.duration;stop.note=(item.verifyNeeded?"请核实：":"")+item.note;stop.cost=item.cost;stop.address=item.address;stop.lat=item.lat;stop.lon=item.lon;stop.day=d.day-1;stop.sortOrder=i;out.add(stop);}return out;}
+ ArrayList<Trip.Stop> toStops(){ArrayList<Trip.Stop> out=new ArrayList<>();for(Day d:days)for(int i=0;i<d.items.size();i++){Item item=d.items.get(i);if(!item.selected)continue;Trip.Stop stop=new Trip.Stop();stop.name=item.name;stop.time=item.time;stop.duration=item.duration;stop.note=(item.verifyNeeded?"请核实：":"")+item.note;stop.cost=item.cost;stop.address=item.address;stop.lat=item.lat;stop.lon=item.lon;stop.day=d.day-1;stop.sortOrder=i;out.add(stop);}return out;}
+ /** Validate every field before committing an edit to this unsaved AI draft. */
+ static void edit(Item item,String name,String clock,String duration,String cost,String address,String note){
+  String n=bounded(name,120,"地点名称"),t=time(clock.trim()),ad=clip(address,300),nt=clip(note,800);int minutes;try{minutes=Integer.parseInt(duration.trim());}catch(Exception e){throw new IllegalArgumentException("地点时长无效");}if(minutes<15||minutes>720)throw new IllegalArgumentException("地点时长须为15–720分钟");long cents=yuan(cost.trim());
+  if(!n.equals(item.name)||!ad.equals(item.address)){item.lat=null;item.lon=null;item.verifyNeeded=true;}
+  item.name=n;item.time=t;item.duration=minutes;item.cost=cents;item.address=ad;item.note=nt;
+ }
  Trip toTrip(String city,String start,int requestedDays,long requestedBudget){Trip trip=new Trip();trip.city=bounded(city,80,"目的地");trip.start=bounded(start,20,"出发日期");trip.days=requestedDays;trip.title=title.isEmpty()?trip.city+(theme.isEmpty()?" 行程":" · "+theme):title;trip.budget=requestedBudget>0?requestedBudget:budgetCents;trip.stops.addAll(toStops());trip.normalize();return trip;}
  private static String bounded(String v,int n,String label){v=v==null?"":v.trim();if(v.isEmpty()||v.length()>n)throw new IllegalArgumentException(label+"无效");return v;}
  private static String clip(String v,int n){v=v==null?"":v.trim();if(v.length()>n)throw new IllegalArgumentException("文字过长");return v;}

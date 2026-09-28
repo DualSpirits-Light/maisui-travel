@@ -10,10 +10,12 @@ param(
     [string]$SigningPasswordEnv='',
     [switch]$StageNineOnly,
     [switch]$MapKeyOnly,
-    [switch]$StageTwoMapOnly
+    [switch]$StageTwoMapOnly,
+    [switch]$StageThreeItineraryOnly,
+    [switch]$AiMemoriesOnly
 )
 $ErrorActionPreference='Stop'
-if((@($StageNineOnly,$MapKeyOnly,$StageTwoMapOnly) | Where-Object { $_ }).Count -gt 1){throw 'Choose only one focused test suite.'}
+if((@($StageNineOnly,$MapKeyOnly,$StageTwoMapOnly,$StageThreeItineraryOnly,$AiMemoriesOnly) | Where-Object { $_ }).Count -gt 1){throw 'Choose only one focused test suite.'}
 if($Device -notmatch '^emulator-\d+$'){throw 'Run these integration tests on a disposable emulator only.'}
 $SdkPath=(Resolve-Path -LiteralPath $SdkPath).Path
 $JdkPath=(Resolve-Path -LiteralPath $JdkPath).Path
@@ -50,6 +52,8 @@ $instrumentArgs=@('-s',$Device,'shell','am','instrument','-w')
 if($StageNineOnly){$instrumentArgs+=@('-e','stageNineOnly','true')}
 if($MapKeyOnly){$instrumentArgs+=@('-e','mapKeyOnly','true')}
 if($StageTwoMapOnly){$instrumentArgs+=@('-e','stageTwoMapOnly','true')}
+if($StageThreeItineraryOnly){$instrumentArgs+=@('-e','stageThreeItineraryOnly','true')}
+if($AiMemoriesOnly){$instrumentArgs+=@('-e','aiMemoriesOnly','true')}
 $instrumentArgs+='cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation'
 $testOutput = & "$SdkPath/platform-tools/adb.exe" @instrumentArgs
 $testExit = $LASTEXITCODE

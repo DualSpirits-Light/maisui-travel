@@ -37,6 +37,8 @@ final class PlaceDetailsUi {
             page.dialog.dismiss();
             checkins.beginNew(trip, stop);
         }));
+        activity.space(page.body,8);
+        page.body.addView(activity.action("查看地点回忆（"+CheckinMemories.forStop(trip,stop).size()+" 条）",false,()->checkins.showPlaceMemories(trip,stop)));
         page.show();
     }
 

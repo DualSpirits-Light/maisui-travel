@@ -18,7 +18,7 @@ final class TripShareArchiveFixtureTest {
    stop.notePhotos.add(writeImage(context,root+"/note-1.jpg",Bitmap.CompressFormat.JPEG,0xff4d83d4));expected.put("note-1",bytes(context,stop.notePhotos.get(0)));
    stop.notePhotos.add(writeImage(context,root+"/note-2.png",Bitmap.CompressFormat.PNG,0xff4dd47c));expected.put("note-2",bytes(context,stop.notePhotos.get(1)));
    Trip.Item item=trip.items.get(0);item.done=true;item.photo=writeImage(context,root+"/item.jpg",Bitmap.CompressFormat.JPEG,0xffd4b14d);expected.put("item",bytes(context,item.photo));
-   Trip.Checkin checkin=new Trip.Checkin();checkin.place="真实照片打卡";checkin.time="2031-04-05T12:30";
+   Trip.Checkin checkin=new Trip.Checkin();checkin.place="真实照片打卡";checkin.stopId=stop.id;checkin.time="2031-04-05T12:30";
    checkin.photo=writeImage(context,root+"/checkin.jpg",Bitmap.CompressFormat.JPEG,0xff8a4dd4);expected.put("checkin",bytes(context,checkin.photo));
    checkin.card=writeImage(context,root+"/card.png",Bitmap.CompressFormat.PNG,0xff4dc9d4);expected.put("card",bytes(context,checkin.card));
    checkin.groupPhotos.add(writeImage(context,root+"/group.jpg",Bitmap.CompressFormat.JPEG,0xffd44d9b));expected.put("group",bytes(context,checkin.groupPhotos.get(0)));
@@ -35,6 +35,7 @@ final class TripShareArchiveFixtureTest {
    if(existing.size()!=1||!store.read().get(0).id.equals(imported.id))throw new AssertionError("trip share import not persisted");checks++;
    if(imported.id.equals(trip.id)||imported.stops.get(0).id.equals(stop.id)||imported.checkins.get(0).id.equals(checkin.id))throw new AssertionError("trip share IDs not regenerated");checks++;
    assertPhotos(context,imported,expected,"first import");checks++;
+   if(!imported.stops.get(0).id.equals(imported.checkins.get(0).stopId)||!store.read().get(0).checkins.get(0).stopId.equals(imported.stops.get(0).id))throw new AssertionError("share import lost checkin association");checks++;
    if(!originalSnapshot.equals(TripStore.encode(Collections.singletonList(trip))))throw new AssertionError("share import mutates original trip");assertPhotos(context,trip,expected,"original after import");checks++;
 
    try(OutputStream out=new FileOutputStream(reShared)){TripShareArchive.write(context,imported,out);}TripShareArchive.Preview repeatedPreview=TripShareArchive.inspect(context,reShared);if(repeatedPreview.photos!=expected.size())throw new AssertionError("re-shared photo count differs");checks++;
@@ -42,6 +43,7 @@ final class TripShareArchiveFixtureTest {
    if(existing.size()!=2||store.read().size()!=2)throw new AssertionError("re-import not persisted");checks++;
    assertEquivalentPayload(imported,reImported);checks++;
    assertPhotos(context,reImported,expected,"re-import");checks++;
+   if(!reImported.stops.get(0).id.equals(reImported.checkins.get(0).stopId))throw new AssertionError("re-share lost checkin association");checks++;
    assertPhotos(context,trip,expected,"original after re-import");checks++;
 
    String before=TripStore.encode(existing);broken=File.createTempFile("trip-share-broken-",".zip",context.getCacheDir());Files.write(broken.toPath(),new byte[]{1,2,3,4});boolean rejected=false;try{TripShareArchive.importTrip(context,broken,store,existing);}catch(Exception expectedFailure){rejected=true;}if(!rejected)throw new AssertionError("corrupt trip share accepted");checks++;if(!before.equals(TripStore.encode(existing))||!before.equals(TripStore.encode(store.read())))throw new AssertionError("rejected trip share changed trips");checks++;

@@ -7,6 +7,7 @@
 | `app/src/main/java/cn/lvxu/travel/` | Android 主逻辑；MainActivity、Trip、TripStore、AppPrefs 为基础入口 |
 | 同目录 ThemeColors / ThemeSettingsUi / RoundedDialogs / TripPickerUi | 配色、圆角弹窗和旅行切换 |
 | 同目录 MapService / MapRoutes / AmapUi / AmapRoadRoutes / AmapRouteSession / AmapPlaceSearch / ApiConfig / AiProviders | 地图、平台密钥、AI 接入 |
+| 同目录 ItineraryTimelineUi / ItineraryFormat / QuickLookUi / ItineraryImageRenderer / ItineraryGallery | 每日时间轴、随手看生成预览与相册保存 |
 | 同目录 CheckinUi / CheckinHistoryUi / PhotoEditorUi / LocationSession | 打卡、照片编辑与定位 |
 | 同目录 TripShareArchive / BackupArchive / WebDavService | 分享、备份、WebDAV |
 | 同目录 UpdateService / UpdateDownloads / UpdateDownloadService / UpdateUi | 清单、校验、下载服务、前台窗口与通知 |
@@ -44,3 +45,10 @@
 | 仓库内 `build` / `build-manual` / `build-stage*` / `.wrangler` / `work` | 被忽略的本地生成物；部分含签名/配置，不能仅按目录名自动清理 |
 
 本次整理通过入口、分类和历史归档减少上下文负担，未搬迁依赖链或删除备份。若以后需要回收磁盘空间，应另列准确路径与依赖检查结果。
+
+## 下一版新增模块（2026-09-28 开发中）
+
+- `AiPlan` / `AiExploreUi` / `AiOptimization`：可编辑的 AI 草稿、选中地点导入、逐项优化建议与冲突保护。
+- `CheckinMemories` / `CheckinUi` / `PlaceDetailsUi`：稳定地点关联、旧记录提示、按日回忆和照片入口。
+- `Trip.Checkin.stopId`：可选的行程地点关联；`TripShareArchive` 导入重新生成编号时同步映射。
+- `tests/cn` 中相应 AI/回忆/日期测试为离线逻辑验证；`tests/android` 中相应 UI 测试验证实际窗口交互。
