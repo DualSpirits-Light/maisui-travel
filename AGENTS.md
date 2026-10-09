@@ -2,7 +2,7 @@
 
 先读 `docs/PROJECT-CONTEXT.md`，再按任务阅读 `docs/DEVELOPMENT.md` 和 `docs/FILE-MAP.md`。历史计划/检查点仅为证据，不要把未勾选的历史清单自动当成当前任务。
 
-- 主 Agent 先拆分有明确边界的工作并负责整合。简单 Debug、Build、Lint、Test、小 UI 优先 Luna；普通 Feature 和中等难度用 Sol；复杂架构、疑难问题和最终 Review 用 Astra。只并行互不依赖的工作，分配不同文件所有权。
+- 主 Agent 先拆分有明确边界的工作并负责整合。2026-10-05 起用户允许自主决定是否调用子 Agent 与模型，不再固定 Luna / Sol / Astra；依据任务独立性与复杂度选择。只并行互不依赖的工作，分配不同文件所有权。
 - 子 Agent 额度不足时可由主 Agent 接手；不要重复启动相同任务消耗额度。向用户简洁说明实际进度。
 - 查看 `git status`，保留用户和其他 Agent 的改动。不要擅自 reset、删除历史产物或整体重构。
 - APK 必须沿用已发布证书，按指纹验证，不凭 debug/release 文件名判断。构建时显式传签名路径。

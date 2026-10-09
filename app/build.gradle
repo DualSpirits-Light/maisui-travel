@@ -15,6 +15,9 @@ def amapClasses = tasks.register('amapClasses', Jar) {
 }
 dependencies { implementation files(amapClasses) }
 dependencies { implementation 'com.squareup.okhttp3:okhttp:4.12.0' }
+dependencies { implementation 'com.baidu.lbsyun:BaiduMapSDK_Map:8.2.0' }
+dependencies { implementation 'com.baidu.lbsyun:BaiduMapSDK_Util:8.2.0' }
+dependencies { implementation 'com.baidu.lbsyun:common:1.0.43' }
 android {
     namespace 'cn.lvxu.travel'
     compileSdk 35
@@ -22,11 +25,18 @@ android {
         applicationId 'cn.lvxu.travel'
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName '0.5.0'
+        versionCode 15
+        versionName '0.6.0'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled true
+            proguardFiles 'proguard-rules.pro'
+        }
+    }
     sourceSets.main.assets.srcDir layout.buildDirectory.dir('amap/distribution/assets')
     sourceSets.main.jniLibs.srcDir layout.buildDirectory.dir('amap/distribution/lib')
     packaging { jniLibs { useLegacyPackaging = true } }

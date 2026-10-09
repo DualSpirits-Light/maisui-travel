@@ -1,5 +1,6 @@
 package cn.lvxu.travel;
 
+import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -19,6 +20,7 @@ import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
 import com.amap.api.maps.model.MarkerOptions;
+import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.PolylineOptions;
 
 import java.util.ArrayList;
@@ -44,9 +46,14 @@ final class AmapUi {
     private android.view.View moreRoutes,retryRoutes;
     private boolean routeBusy;
     private final Bundle restoredState;
+    private final String renderedTripId;
+    private final int renderedDay;
+    private final Map<String,Marker> stopMarkers=new HashMap<>();
+    private AlertDialog stopMenu;
+    private String pendingFocusId="";
 
     AmapUi(MainActivity activity) { this(activity,null); }
-    AmapUi(MainActivity activity,Bundle state) { a = activity; restoredState=state; }
+    AmapUi(MainActivity activity,Bundle state) { a = activity; restoredState=state;renderedTripId=a.active==null?"":a.active.id;renderedDay=a.day; }
 
     void show(ArrayList<Trip.Stop> stops) {
         if (!AmapRuntime.configured(a)) {
@@ -99,10 +106,13 @@ final class AmapUi {
                     event.getActionMasked() != MotionEvent.ACTION_CANCEL);
             return false;
         });
-        a.body.addView(mapView, new LinearLayout.LayoutParams(-1, a.dp(380)));
+        MapGestureFrame gestures=new MapGestureFrame(a);gestures.addView(mapView,new android.widget.FrameLayout.LayoutParams(-1,-1));a.body.addView(gestures, new LinearLayout.LayoutParams(-1, a.dp(380)));
         AMap map = mapView.getMap();
         map.getUiSettings().setZoomControlsEnabled(true);
+        map.getUiSettings().setZoomGesturesEnabled(true);
+        map.getUiSettings().setScrollGesturesEnabled(true);
         map.getUiSettings().setCompassEnabled(true);
+        map.setOnMarkerClickListener(marker->{Object id=marker.getObject();return id instanceof String&&selectStop((String)id);});
         map.setOnMapLongClickListener(point -> {
             Trip.Stop draft = new Trip.Stop();
             draft.name = "地图选点";
@@ -122,8 +132,9 @@ final class AmapUi {
             LatLng point = new LatLng(coordinate[0], coordinate[1]);
             route.add(point);
             bounds.include(point);
-            map.addMarker(new MarkerOptions().position(point).title((i + 1) + ". " + stop.name)
+            Marker marker=map.addMarker(new MarkerOptions().position(point).title((i + 1) + ". " + stop.name)
                     .snippet(stop.time + " · " + stop.mode).icon(numberedMarker(i + 1)));
+            if(marker!=null){marker.setObject(stop.id);stopMarkers.put(stop.id,marker);}
         }
         if (route.size() > 1) {
             mapView.post(() -> {if(!disposed&&mapView!=null)try{map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), a.dp(42)));}catch(RuntimeException ignored){}});
@@ -141,6 +152,41 @@ final class AmapUi {
             a.space(a.body, 8);
             a.body.addView(a.text("未定位的地点可在“编辑地点”中填写经纬度，或导入含位置的高德分享链接。", 12, MainActivity.MUTED));
         }
+    }
+
+    /** Resolve every action against the live trip, keeping names and view positions out of identity. */
+    private Trip liveTrip(){
+        if(disposed||a.isFinishing()||a.isDestroyed()||a.active==null||a.day!=renderedDay||!renderedTripId.equals(a.active.id))return null;
+        for(Trip trip:a.trips)if(trip==a.active)return trip;
+        return null;
+    }
+    private Trip.Stop liveStop(String id){
+        Trip trip=liveTrip();if(trip==null||id==null||id.isEmpty())return null;
+        Trip.Stop stop=AiOptimization.find(trip,id);
+        return stop!=null&&stop.day==renderedDay&&AmapRoadRoutes.coordinate(stop)!=null?stop:null;
+    }
+    boolean selectStop(String id){
+        Trip.Stop stop=liveStop(id);if(stop==null)return false;
+        a.selectedStopId=id;focusStop(id);if(stopMenu!=null)stopMenu.dismiss();
+        stopMenu=new RoundedDialogs.Builder(a).setTitle(stop.name).setItems(new String[]{"地点详情","导航到这里","编辑地点"},(dialog,which)->{
+            Trip.Stop current=liveStop(id);Trip trip=liveTrip();
+            if(current==null||trip==null){a.toast("地点已变化，请重新选择");return;}
+            if(which==0)a.showPlaceDetails(trip,current);else if(which==1)a.map(current);else a.stopEditor(current);
+        }).setNegativeButton("关闭",null).show();
+        return true;
+    }
+    /** Camera changes follow the initial fit-all post, so a requested stop stays focused. */
+    boolean focusStop(String id){
+        Trip.Stop stop=liveStop(id);Marker marker=id==null?null:stopMarkers.get(id);
+        if(stop==null||marker==null||!alive())return false;
+        pendingFocusId=id;
+        mapView.post(()->{
+            if(!alive()||!id.equals(pendingFocusId))return;
+            Trip.Stop current=liveStop(id);Marker selected=stopMarkers.get(id);if(current==null||selected==null)return;
+            double[] point=AmapRoadRoutes.coordinate(current);if(point==null)return;
+            try{mapView.getMap().animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(point[0],point[1]),15f));selected.showInfoWindow();}catch(RuntimeException ignored){}
+        });
+        return true;
     }
 
     private void addDistanceCard(ArrayList<Trip.Stop> known) {
@@ -266,12 +312,14 @@ final class AmapUi {
     void saveState(Bundle state) { if (mapView != null) {Bundle saved=new Bundle();mapView.onSaveInstanceState(saved);state.putBundle("amap-state",saved);} }
     void destroy() {
         disposed=true;
+        if(stopMenu!=null){stopMenu.dismiss();stopMenu=null;}
         ++routeGeneration;
         if(routeSession!=null)routeSession.cancel();
         destroyNative();
     }
     private void destroyNative() {
         ++routeGeneration;if(routeSession!=null)routeSession.cancel();
+        pendingFocusId="";stopMarkers.clear();
         if (mapView != null) { try{pause();mapView.onDestroy();}catch(RuntimeException ignored){}mapView = null; }
     }
 }

@@ -89,13 +89,16 @@ public final class RoundedDialogs {
 
     private static void apply(AlertDialog dialog, boolean selection) {
         Window window = dialog.getWindow();
-        if (window == null) return;
+        // The posted styling callback may run after a rapid dismiss or Activity finish.
+        // Window setters notify WindowManager, so never touch a detached dialog.
+        if (window == null || !dialog.isShowing() || !window.getDecorView().isAttachedToWindow()) return;
 
         float radius = window.getContext().getResources().getDisplayMetrics().density * 24f;
         GradientDrawable background = new GradientDrawable();
         background.setColor(MainActivity.SURFACE);
         background.setCornerRadius(radius);
         window.setBackgroundDrawable(background);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         if (selection) {
             int width = window.getContext().getResources().getDisplayMetrics().widthPixels;
@@ -114,10 +117,11 @@ public final class RoundedDialogs {
         }
 
         int buttonColor = MainActivity.readable(MainActivity.GREEN, MainActivity.SURFACE);
+        ThemeViews.apply(window.getDecorView(), MainActivity.SURFACE);
+        // Native ripple masks do not describe the actual transparent button surface.
         setButtonColor(dialog.getButton(AlertDialog.BUTTON_POSITIVE), buttonColor);
         setButtonColor(dialog.getButton(AlertDialog.BUTTON_NEGATIVE), buttonColor);
         setButtonColor(dialog.getButton(AlertDialog.BUTTON_NEUTRAL), buttonColor);
-        ThemeViews.apply(window.getDecorView(), MainActivity.SURFACE);
         android.widget.ListView list=dialog.getListView();
         if(list!=null)list.setOnHierarchyChangeListener(new android.view.ViewGroup.OnHierarchyChangeListener(){
             public void onChildViewAdded(View parent,View child){ThemeViews.apply(child,MainActivity.SURFACE);}
@@ -126,6 +130,6 @@ public final class RoundedDialogs {
     }
 
     private static void setButtonColor(Button button, int color) {
-        if (button != null) button.setTextColor(color);
+        if (button != null) {button.setBackgroundTintList(null);button.setBackgroundColor(android.graphics.Color.TRANSPARENT);button.setTextColor(color);}
     }
 }

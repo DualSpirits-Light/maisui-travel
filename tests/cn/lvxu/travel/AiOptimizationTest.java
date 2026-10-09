@@ -7,6 +7,7 @@ public final class AiOptimizationTest {
  public static void main(String[] args)throws Exception{
   Trip t=Trip.demo();String id=t.stops.get(0).id;
   String json="{\"suggestions\":[{\"stopId\":\""+id+"\",\"reason\":\"避开早高峰\",\"changes\":{\"time\":\"10:00\"}}]}";
+  t.stops.get(0).timeLocked=true;reject(()->AiOptimization.parse(json,t),"locked appointment time must not be changed by AI");t.stops.get(0).timeLocked=false;
   AiOptimization p=AiOptimization.parse(json,t);
   check(AiOptimization.parse("{\"suggestions\":[]}",t).suggestions.isEmpty(),"no changes is valid");
   check(p.suggestions.size()==1,"reads suggestion");

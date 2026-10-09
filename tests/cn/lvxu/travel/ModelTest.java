@@ -14,6 +14,10 @@ public final class ModelTest {
         t.items.get(0).done=true;Trip copy=Trip.from(new JSONObject(t.json().toString()));check(copy.json().toString().equals(t.json().toString()),"backup round trip");check(copy.items.get(0).done,"checklist retained");
         check(copy.categories.size()==6&&copy.lists.size()==1,"defaults retained");
         Trip.Expense rich=new Trip.Expense();rich.name="夜宵";rich.amount=880;rich.categoryId=t.categories.get(0).id;rich.category=t.categories.get(0).name;rich.occurredAt="2026-09-07T21:30";t.expenses.add(rich);
+        rich.photo="media/photos/receipt.jpg";
+        copy=Trip.from(t.json());check(copy.expenses.get(copy.expenses.size()-1).photo.equals(rich.photo),"expense receipt retained");
+        JSONObject oldExpense=rich.json();oldExpense.remove("photo");check(Trip.Expense.from(oldExpense).photo.isEmpty(),"legacy expense without receipt");
+        JSONObject badReceipt=rich.json().put("photo","../secret.jpg");rejects(()->Trip.Expense.from(badReceipt),"expense media traversal rejected");
         Trip.Item detail=new Trip.Item("相机");detail.listId=t.lists.get(0).id;detail.importance="重要";detail.note="充满电";detail.attributes.put("数量","1");t.items.add(detail);
         copy=Trip.from(new JSONObject(t.json().toString()));check(copy.expenses.get(copy.expenses.size()-1).occurredAt.equals("2026-09-07T21:30"),"expense datetime retained");check(copy.items.get(copy.items.size()-1).attributes.get("数量").equals("1"),"custom fields retained");
         String deleted=t.categories.get(0).id,replacement=t.categories.get(1).id;t.deleteCategory(deleted,replacement);check(rich.categoryId.equals(replacement)&&t.category(deleted)==null,"category delete reassigns expenses");

@@ -23,6 +23,7 @@ final class AmapPlaceSearch {
     private static final int PAGE_SIZE = 20;
     private final MainActivity activity;
     private ProgressDialog progress;
+    private java.util.function.Consumer<Trip.Stop> selected;
     private int requestGeneration;
     private String requestKey;
 
@@ -30,9 +31,13 @@ final class AmapPlaceSearch {
         this.activity = activity;
     }
 
-    void search(String keyword) {
+    void search(String keyword,java.util.function.Consumer<Trip.Stop> callback){search(keyword,activity.active,callback);}
+    void search(String keyword,Trip target,java.util.function.Consumer<Trip.Stop> callback){selected=callback;search(keyword,target,activity.day);}
+
+    void search(String keyword) {search(keyword,activity.active,activity.day);}
+    private void search(String keyword,Trip targetTrip,int targetDay) {
         if (!AmapRuntime.configured(activity)) {
-            new AdvancedSettingsUi(activity).androidKey(() -> search(keyword));
+            new AdvancedSettingsUi(activity).androidKey(() -> search(keyword,targetTrip,targetDay));
             return;
         }
         if (AmapRuntime.needsRestart(activity)) {
@@ -48,11 +53,12 @@ final class AmapPlaceSearch {
             activity.toast("搜索关键词过长");
             return;
         }
-        if (activity.active == null) {
+        if (targetTrip == null) {
             activity.toast("请先创建一个旅行");
             return;
         }
-        AmapConsent.request(activity, () -> beginSearch(clean));
+        final String city;try{city=SearchCityScope.require(targetTrip.city);}catch(IllegalArgumentException e){activity.toast(e.getMessage());return;}
+        AmapConsent.request(activity, () -> beginSearch(clean,targetTrip,targetDay,city));
     }
 
     private void showSearchDialog() {
@@ -83,7 +89,7 @@ final class AmapPlaceSearch {
         dialog.show();
     }
 
-    private void beginSearch(String keyword) {
+    private void beginSearch(String keyword,Trip targetTrip,int targetDay,String city) {
         if (!alive() || !AmapConsent.granted(activity)) return;
         if (!AmapRuntime.prepare(activity)) {
             activity.toast("高德服务暂不可用，请检查 Android Key 或重启应用");
@@ -91,9 +97,8 @@ final class AmapPlaceSearch {
         }
         final int generation = ++requestGeneration;
         requestKey=AmapRuntime.key(activity);
-        final Trip targetTrip = activity.active;
-        final int targetDay = activity.day;
-        if (targetTrip == null) return;
+
+        if (targetTrip == null || activity.active != targetTrip) return;
         dismissProgress();
         progress = new ProgressDialog(activity);
         progress.setMessage("正在搜索高德地点…");
@@ -105,14 +110,14 @@ final class AmapPlaceSearch {
             ServiceSettings settings = ServiceSettings.getInstance();
             settings.updatePrivacyShow(activity, true, true);
             settings.updatePrivacyAgree(activity, true);
-            String city = safe(targetTrip.city);
+
             PoiSearchV2.Query query = new PoiSearchV2.Query(keyword, "", city);
             query.setPageSize(PAGE_SIZE);
             query.setPageNum(1);
-            query.setCityLimit(!city.isEmpty());
+            query.setCityLimit(true);
             query.setShowFields(new PoiSearchV2.ShowFields(PoiSearchV2.ShowFields.BUSINESS | PoiSearchV2.ShowFields.PHOTOS));
             PoiSearchV2 search = new PoiSearchV2(activity, query);
-            search.setOnPoiSearchListener(new Listener(generation, targetTrip, targetDay));
+            search.setOnPoiSearchListener(new Listener(generation, targetTrip, targetDay,city));
             search.searchPOIAsyn();
         } catch (AMapException | RuntimeException | LinkageError e) {
             if (generation == requestGeneration) {
@@ -123,7 +128,7 @@ final class AmapPlaceSearch {
     }
 
     private void deliver(int generation, Trip targetTrip, int targetDay,
-                         PoiResultV2 result, int code) {
+                         PoiResultV2 result, int code,String city) {
         if (generation != requestGeneration) return;
         if (!alive() || !requestKey.equals(AmapRuntime.key(activity)) || AmapRuntime.needsRestart(activity)) { dismissProgress(); return; }
         dismissProgress();
@@ -131,7 +136,8 @@ final class AmapPlaceSearch {
             activity.toast("高德地点搜索失败（" + code + "）");
             return;
         }
-        ArrayList<PoiItemV2> pois = result.getPois();
+        ArrayList<PoiItemV2> pois = new ArrayList<>();
+        for(PoiItemV2 poi:result.getPois())if(poi!=null&&SearchCityScope.matches(city,poi.getCityName(),poi.getProvinceName()))pois.add(poi);
         if (pois.isEmpty()) {
             activity.toast("没有找到相关地点，请换个关键词");
             return;
@@ -186,8 +192,9 @@ final class AmapPlaceSearch {
                 }
             } catch (NumberFormatException ignored) { }
         }
+        if(selected!=null){stop.sourceSnapshot=TripLinkCodec.snapshot(stop);selected.accept(stop);return;}
         PlaceImporter.Place info=new PlaceImporter.Place();AmapDetails.fill(info,poi);
-        activity.runJob("正在读取地点照片…",()->{try{stop.previewPhoto=PlaceMediaUi.download(activity,info.imageUrl);}catch(Exception ignored){}return null;},()->activity.stopEditorDraft(stop));
+        activity.runJob("正在读取地点照片…",()->{try{stop.previewPhoto=PlaceMediaUi.download(activity,info.imageUrl);}catch(Exception ignored){}return null;},()->{if(!alive()||activity.active!=targetTrip)return;if(selected!=null)selected.accept(stop);else activity.stopEditorDraft(stop);});
     }
 
     private boolean alive() {
@@ -211,13 +218,14 @@ final class AmapPlaceSearch {
         private final int generation;
         private final Trip targetTrip;
         private final int targetDay;
-        Listener(int generation, Trip targetTrip, int targetDay) {
+        private final String city;
+        Listener(int generation, Trip targetTrip, int targetDay,String city) {
             this.generation = generation;
             this.targetTrip = targetTrip;
-            this.targetDay = targetDay;
+            this.targetDay = targetDay;this.city=city;
         }
         @Override public void onPoiSearched(PoiResultV2 result, int code) {
-            deliver(generation, targetTrip, targetDay, result, code);
+            deliver(generation, targetTrip, targetDay, result, code,city);
         }
         @Override public void onPoiItemSearched(PoiItemV2 item, int code) { }
         @Override public void onVisualSearched(VisualSearchResult result, int code) { }

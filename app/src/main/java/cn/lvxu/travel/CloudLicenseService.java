@@ -206,6 +206,17 @@ public final class CloudLicenseService {
         }
     }
 
+    /** Device-scoped proof for shared travel queries; no provider credentials. */
+    JSONObject travelCredentials() throws Exception {
+        synchronized (LOCK) {
+            Credential c = credential();
+            if (c.licenseId.isEmpty() || c.secret.isEmpty())
+                throw new IllegalStateException("请先在设置中激活云授权，再使用美团旅行");
+            return new JSONObject().put("licenseId", c.licenseId)
+                    .put("deviceId", deviceId()).put("deviceSecret", c.secret);
+        }
+    }
+
     public void refresh() throws Exception {
         synchronized (NETWORK_LOCK) {
             if (!configured()) throw new IOException("云授权服务尚未配置");

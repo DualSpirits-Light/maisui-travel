@@ -42,7 +42,7 @@ public final class PlannerUiTests {
             setText(initialFields.get(0),"苏州");
             checks.that(existsDescription(ui,"选择日期"),"planner date field has calendar button");
             click(awaitDescription(ui,"选择日期",true));
-            checks.that(awaitClass(ui,"DatePicker",true)!=null,"calendar button opens date picker");
+            checks.that(awaitDescription(ui,"选择年份",true)!=null,"calendar button opens date picker");
             click(awaitId(ui,"android:id/button2",true));
             await(ui,"快速规划 · 1/4",true);
 
@@ -56,7 +56,8 @@ public final class PlannerUiTests {
             click(previous);
             await(ui,"快速规划 · 1/4",true);
             checks.that(dialogOf(planner[0])==wizard,"planner previous reuses its original dialog");
-            initialFields=editFields(ui.getRootInActiveWindow());
+            instrumentation.waitForIdleSync();
+            for(int attempt=0;attempt<50;attempt++){ui.clearCache();initialFields=editFields(ui.getRootInActiveWindow());if(initialFields.size()>=2&&"苏州".contentEquals(initialFields.get(0).getText()))break;android.os.SystemClock.sleep(100);}
             checks.that(initialFields.size()>=2&&"苏州".contentEquals(initialFields.get(0).getText()),"planner preserves draft values after previous");
             click(await(ui,"下一步",true));
             await(ui,"快速规划 · 2/4",true);

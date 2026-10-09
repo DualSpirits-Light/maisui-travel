@@ -20,11 +20,11 @@ final class StageThreeTimelineTest {
    Trip.Stop second=stop("河畔夜景","23:45",30,"公交");trip.stops.add(first);trip.stops.add(second);
    for(String theme:new String[]{"light","dark"}){
     in.runOnMainSync(()->{prefs.setTheme(theme);a.trips.clear();a.trips.add(trip);a.active=trip;a.page=1;a.day=0;a.mapMode=false;a.render();});in.waitForIdleSync();
-    n+=check(find(a.body,"23:30 — 次日 01:00")!=null,"cross midnight time rendered");n+=check(find(a.body,"第 1 天 · 2026年9月27日 · 星期日")!=null,"date and weekday rendered");
+    n+=check(find(a.body,"23:30 — 次日 01:00")!=null,"cross midnight time rendered");n+=check(find(a.body,"9月27日 周日")!=null,"date and weekday rendered");
     n+=check(find(a.body,"公交抵达 · 时间冲突，前一安排尚未结束")!=null,"destination transport and conflict rendered");
-    n+=check(find(a.body,"与其他地点的安排时间重叠，请检查。")!=null,"overlap visible");n+=check(find(a.body,first.address)!=null&&find(a.body,"营业时间：全天")!=null&&find(a.body,first.note)!=null,"metadata retained");
+    n+=check(find(a.body,"与其他地点的安排时间重叠，请检查。")!=null,"overlap visible");n+=check(PlaceDetailsContent.rows(trip,first).stream().anyMatch(r->first.address.equals(r.value))&&PlaceDetailsContent.rows(trip,first).stream().anyMatch(r->"全天".equals(r.value))&&find(a.body,first.note)!=null,"metadata retained");
     StopReorderLayout list=(StopReorderLayout)type(a.body,StopReorderLayout.class);n+=check(list.getChildCount()==2,"only stop rows are direct reorder children");
-    n+=check(find(a.body,"生成随手看")!=null&&find(a.body,"编辑地点")!=null,"quick look and edit available");
+    n+=check(find(a.root,"行程工具")!=null&&find(a.body,"编辑")!=null,"quick look and edit available");
     in.runOnMainSync(()->((ScrollView)a.body.getParent()).scrollTo(0,list.getTop()-a.dp(10)));in.waitForIdleSync();capture(in,"timeline-"+theme+".png");
     TextView title=(TextView)find(a.body,first.name);n+=check(title.getLineCount()>1&&title.getEllipsize()==null,"long title wraps without truncation");
    }

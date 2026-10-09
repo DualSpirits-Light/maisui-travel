@@ -14,6 +14,7 @@ import { createDonationHandlers } from "./donations.js";
 import {shareRequest,cleanupShares} from "./shares.js";
 import {updateManifestResponse} from "./update-manifest.js";
 import {updateDownloadResponse} from "./update-download.js";
+import {createTravelHandler} from "./meituan-travel.js";
 
 const PRODUCT = "maisui-travel";
 const MAX_BODY_BYTES = 4096;
@@ -129,6 +130,7 @@ async function leaseToken(license, deviceId, env, now, clientVersion) {
 }
 
 const donations = createDonationHandlers({ readJson, HttpError, json });
+const travelQuery = createTravelHandler({ readJson, HttpError, json, rateLimit });
 
 function assertClientPolicy(license, clientVersion) {
   if (clientVersion < 31 && license.offline_seconds === 0) {
@@ -413,6 +415,7 @@ export async function handleRequest(request, env, ctx) {
   }
   if (request.method === "POST" && url.pathname === "/v1/activate") return activate(request, env);
   if (request.method === "POST" && url.pathname === "/v1/refresh") return refresh(request, env);
+  if (request.method === "POST" && url.pathname === "/v1/travel/query") return travelQuery(request, env);
   if (request.method === "GET" && url.pathname === "/v1/donations") {
     await rateLimit(request, env, "donations", integerSetting(env, "PUBLIC_RATE_LIMIT_PER_MINUTE", 30, 1, 1000));
     return donations.publicFeed(env);

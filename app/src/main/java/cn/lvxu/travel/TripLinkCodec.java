@@ -37,8 +37,8 @@ final class TripLinkCodec {
  }
  static Trip copyForShare(Trip original,boolean memories,boolean photos)throws Exception {
   Trip t=Trip.from(original.json());t.pinned=false;t.archived=false;t.favorite=false;
-  if(!memories){t.companions="";t.vehicleNumber="";t.expenses.clear();t.checkins.clear();for(Trip.Item i:t.items)i.done=false;}
-  if(!photos){for(Trip.Stop s:t.stops){s.previewPhoto="";s.notePhotos.clear();}for(Trip.Item i:t.items)i.photo="";for(Trip.Checkin c:t.checkins){c.photo="";c.card="";c.groupPhotos.clear();c.sceneryPhotos.clear();}}
+  if(!memories){t.companions="";t.vehicleNumber="";t.expenses.clear();t.members.clear();t.settlements.clear();t.checkins.clear();t.items.removeIf(i->i.done);}
+  if(!photos){for(Trip.Expense e:t.expenses)e.photo="";for(Trip.Stop s:t.stops){s.previewPhoto="";s.notePhotos.clear();}for(Trip.Item i:t.items)i.photo="";for(Trip.Checkin c:t.checkins){c.photo="";c.card="";c.groupPhotos.clear();c.sceneryPhotos.clear();}}
   return t;
  }
 }

@@ -13,6 +13,7 @@ final class AdvancedSettingsUi {
   box.addView(a.action("应用地图服务商",false,()->{try{config.put("mapProvider",MapService.IDS[provider.getSelectedItemPosition()]);a.toast("地图服务已切换");a.render();}catch(Exception e){a.toast("设置未能保存，请重试");}}));
   box.addView(a.text("高德地图与地点搜索使用 Android SDK Key。请在本机填写您自己的 Android 平台 Key；下方 Web 服务 Key 用于独立的 Web 接口，不能互换。",13,MainActivity.MUTED));
   box.addView(a.action("高德 Android SDK Key  ›",false,()->androidKey(null)));
+  box.addView(a.action("百度城市热力图 Android AK  ›",false,()->baiduAndroidKey(null)));
   for(int i=0;i<MapService.IDS.length;i++){final String id=MapService.IDS[i];box.addView(a.action(MapService.NAMES[i]+" Web 服务配置  ›",false,()->mapKey(id)));}
   a.space(box,14);Switch coords=new Switch(a);coords.setText("显示地点坐标信息");coords.setTextColor(MainActivity.INK);coords.setChecked(a.prefs.showPlaceCoordinates());coords.setOnCheckedChangeListener((v,on)->a.prefs.setShowPlaceCoordinates(on));box.addView(coords);
   box.addView(a.action("首页随机风景接口  ›",false,this::scenery));
@@ -51,6 +52,7 @@ final class AdvancedSettingsUi {
    }catch(Exception e){error.setText("保存失败，请重试");}
   });});d.show();return d;
  }
+ AlertDialog baiduAndroidKey(Runnable afterSave){LinearLayout f=a.col();a.pad(f,20);f.addView(a.text("城市人流热力图单独使用百度地图 Android SDK。请填写绑定下面包名和签名 SHA1 的 Android AK，不可使用浏览器或服务端 AK。只加密保存在本机，保存不代表鉴权成功。",13,MainActivity.MUTED));TextView identity=a.text(AmapIdentity.description(a),12,MainActivity.MUTED);identity.setTextIsSelectable(true);f.addView(identity);EditText key=secret(a,f,"百度 Android AK",config.baiduAndroidKey());TextView error=a.text("",13,MainActivity.ORANGE);f.addView(error);AlertDialog d=new RoundedDialogs.Builder(a).setTitle("百度城市热力图配置").setView(scroll(f)).setNegativeButton("取消",null).setNeutralButton("清除",null).setPositiveButton("保存",null).create();d.setOnShowListener(v->{d.getButton(-3).setOnClickListener(w->{try{config.put("baiduAndroidKey","");d.dismiss();a.toast("已清除，请重启应用后生效");}catch(Exception e){error.setText("清除失败");}});d.getButton(-1).setOnClickListener(w->{String value=key.getText().toString().trim();if(value.isEmpty()||value.length()>256||value.matches("(?s).*\\s.*")){error.setText("请填写有效的 Android AK");return;}try{config.put("baiduAndroidKey",value);d.dismiss();if(afterSave!=null)afterSave.run();else a.toast("已保存；如已启用过热力图，请重启应用");}catch(Exception e){error.setText("保存失败，请重试");}});});d.show();return d;}
  private android.widget.ScrollView scroll(LinearLayout form){android.widget.ScrollView view=new android.widget.ScrollView(a);view.addView(form);return view;}
  void mapKey(String id){mapKey(id,null);}
  AlertDialog mapKey(String id,Runnable afterSave){

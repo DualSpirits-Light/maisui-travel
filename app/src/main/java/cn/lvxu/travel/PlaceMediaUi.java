@@ -1,6 +1,6 @@
 package cn.lvxu.travel;
 
-import android.app.AlertDialog;
+import android.app.AlertDialog;import android.os.Bundle;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.view.*;
@@ -17,23 +17,29 @@ final class PlaceMediaUi {
     private final MainActivity a;
     private String preview;
     private final ArrayList<String> notes;
-    private LinearLayout panel,notePanel;
+    private LinearLayout panel,notePanel;private boolean closed;private final ArrayList<String> owned=new ArrayList<>();
     PlaceMediaUi(MainActivity a,Trip.Stop stop){this.a=a;preview=stop.previewPhoto;notes=new ArrayList<>(stop.notePhotos);}
     void editor(LinearLayout form){panel=a.col();form.addView(panel);refresh();}
     void noteEditor(LinearLayout form){notePanel=a.col();form.addView(notePanel);refresh();}
     private void refresh(){
-        if(panel!=null){panel.removeAllViews();if(!preview.isEmpty()){image(a,panel,preview,140,false);a.space(panel,8);}else{panel.addView(a.text("预览图 · 可选，无图时显示地点名称",13,MainActivity.MUTED));a.space(panel,8);}a.pair(panel,a.action(preview.isEmpty()?"＋ 添加预览图":"更换预览图",false,()->a.media.pickOriginal(path->{preview=path;refresh();})),a.action("使用文字预览",false,()->{preview="";refresh();}));a.space(panel,18);}
+        if(panel!=null){panel.removeAllViews();if(!preview.isEmpty()){image(a,panel,preview,140,false);a.space(panel,8);}else{panel.addView(a.text("预览图 · 可选，无图时显示地点名称",13,MainActivity.MUTED));a.space(panel,8);}a.pair(panel,a.action(preview.isEmpty()?"＋ 添加预览图":"更换预览图",false,()->a.media.pickOriginal(MediaController.SelectionOwner.PLACE_PREVIEW,this::selectedPreview)),a.action("使用文字预览",false,()->{preview="";refresh();}));a.space(panel,18);}
         if(notePanel!=null){
             notePanel.removeAllViews();notePanel.addView(a.text("备注照片 · 可选，已添加 "+notes.size()+" 张",13,MainActivity.MUTED));a.space(notePanel,10);
             for(int start=0;start<notes.size();start+=2){LinearLayout row=a.row();row.setGravity(Gravity.TOP);
                 for(int column=0;column<2;column++){int index=start+column;LinearLayout cell=a.col();LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(column==0?0:a.dp(5),0,column==0?a.dp(5):0,a.dp(12));row.addView(cell,lp);if(index>=notes.size())continue;
-                    String path=notes.get(index);image(a,cell,path,0,true);LinearLayout controls=a.row();controls.setGravity(Gravity.CENTER);ImageButton remove=icon(a,R.drawable.ic_trash,"删除备注照片 "+(index+1),()->a.confirm("删除这张备注照片？",()->{notes.remove(path);refresh();}));ImageButton crop=icon(a,R.drawable.ic_crop,"裁剪备注照片 "+(index+1),()->PhotoPreviewUi.crop(a,path,result->{int at=notes.indexOf(path);if(at>=0){notes.set(at,result);refresh();}}));controls.addView(remove,new LinearLayout.LayoutParams(0,a.dp(48),1));controls.addView(crop,new LinearLayout.LayoutParams(0,a.dp(48),1));cell.addView(controls);
+                    String path=notes.get(index);image(a,cell,path,0,true);LinearLayout controls=a.row();controls.setGravity(Gravity.CENTER);ImageButton remove=icon(a,R.drawable.ic_trash,"删除备注照片 "+(index+1),()->a.confirm("删除这张备注照片？",()->{notes.remove(path);refresh();}));ImageButton crop=icon(a,R.drawable.ic_crop,"裁剪备注照片 "+(index+1),()->PhotoPreviewUi.crop(a,path,result->{int at=notes.indexOf(path);if(at>=0){owned.add(result);notes.set(at,result);refresh();}}));controls.addView(remove,new LinearLayout.LayoutParams(0,a.dp(48),1));controls.addView(crop,new LinearLayout.LayoutParams(0,a.dp(48),1));cell.addView(controls);
                 }notePanel.addView(row);
             }
-            notePanel.addView(a.action("＋ 添加备注照片",false,()->{if(notes.size()>=20){a.toast("备注照片最多 20 张");return;}a.media.pickOriginal(path->{notes.add(path);refresh();});}));a.space(notePanel,18);
+            notePanel.addView(a.action("＋ 添加备注照片",false,()->{if(notes.size()>=20){a.toast("备注照片最多 20 张");return;}a.media.pickOriginal(MediaController.SelectionOwner.PLACE_NOTE,this::selectedNote);}));a.space(notePanel,18);
         }
     }
     private static ImageButton icon(MainActivity a,int resource,String description,Runnable click){ImageButton button=new ImageButton(a);button.setImageResource(resource);button.setColorFilter(MainActivity.INK);button.setBackgroundColor(android.graphics.Color.TRANSPARENT);button.setPadding(a.dp(12),a.dp(12),a.dp(12),a.dp(12));button.setContentDescription(description);button.setOnClickListener(v->click.run());return button;}
+    private void selectedPreview(String path){if(closed){DraftMediaFiles.discard(a,path);return;}owned.add(path);preview=path;refresh();}
+    private void selectedNote(String path){if(closed||notes.size()>=20){DraftMediaFiles.discard(a,path);return;}owned.add(path);notes.add(path);refresh();}
+    void saveState(Bundle b){b.putString("place.media.preview",preview);b.putStringArrayList("place.media.notes",new ArrayList<>(notes));b.putStringArrayList("place.media.owned",new ArrayList<>(owned));}
+    void restoreState(Bundle b){preview=b.getString("place.media.preview",preview);ArrayList<String> saved=b.getStringArrayList("place.media.notes");if(saved!=null){notes.clear();notes.addAll(saved);}saved=b.getStringArrayList("place.media.owned");if(saved!=null){owned.clear();owned.addAll(saved);}refresh();}
+    void attachPendingSelection(){a.media.attachSelection(MediaController.SelectionOwner.PLACE_PREVIEW,this::selectedPreview);a.media.attachSelection(MediaController.SelectionOwner.PLACE_NOTE,this::selectedNote);}
+    void closeDraft(boolean saved){closed=true;if(a.isChangingConfigurations()||a.isDestroyed())return;a.media.detachSelection(MediaController.SelectionOwner.PLACE_PREVIEW);a.media.detachSelection(MediaController.SelectionOwner.PLACE_NOTE);for(String path:owned)DraftMediaFiles.discard(a,path);owned.clear();}
     void apply(Trip.Stop stop){stop.previewPhoto=preview;stop.notePhotos.clear();stop.notePhotos.addAll(notes);}
     static void preview(MainActivity a,LinearLayout box,Trip.Stop stop){if(!stop.previewPhoto.isEmpty()){image(a,box,stop.previewPhoto,150,false);a.space(box,14);}}
     static void notes(MainActivity a,LinearLayout box,Trip.Stop stop){if(stop.notePhotos.isEmpty())return;a.space(box,10);HorizontalScrollView scroll=new HorizontalScrollView(a);scroll.setHorizontalScrollBarEnabled(false);LinearLayout row=a.row();for(String path:stop.notePhotos){LinearLayout thumbnail=a.col();image(a,thumbnail,path,0,true);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(a.dp(90),-2);lp.rightMargin=a.dp(8);row.addView(thumbnail,lp);}scroll.addView(row);box.addView(scroll);}

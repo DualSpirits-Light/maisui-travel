@@ -17,6 +17,7 @@ final class ApiConfig {
  private void write(JSONObject o,JSONObject values)throws Exception {java.util.Iterator<String> keys=values.keys();while(keys.hasNext()){String k=keys.next();o.put(k,values.get(k));}vault.put("api-config-v1",o.toString());revision++;}
  String mapProvider(){return read().optString("mapProvider","amap");}
  String mapKey(String provider){return read().optString("mapKey."+provider,"");}
+ String baiduAndroidKey(){return read().optString("baiduAndroidKey","");}
  String amapAndroidKey(){return read().optString("amapAndroidKey","");}
  String scenery(){String s=read().optString("scenery","");return s.isEmpty()?DEFAULT_SCENERY:s;}
  String prompt(){return read().optString("prompt",DEFAULT_PROMPT);}

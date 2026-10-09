@@ -12,10 +12,16 @@ param(
     [switch]$MapKeyOnly,
     [switch]$StageTwoMapOnly,
     [switch]$StageThreeItineraryOnly,
-    [switch]$AiMemoriesOnly
+    [switch]$TravelEntryOnly,
+    [switch]$AiMemoriesOnly,
+    [switch]$TravelDraftOnly,
+    [switch]$AuditFixesOnly,
+    [switch]$TravelDayOnly,
+    [switch]$MeituanOnly,
+    [switch]$UiPolishOnly
 )
 $ErrorActionPreference='Stop'
-if((@($StageNineOnly,$MapKeyOnly,$StageTwoMapOnly,$StageThreeItineraryOnly,$AiMemoriesOnly) | Where-Object { $_ }).Count -gt 1){throw 'Choose only one focused test suite.'}
+if((@($StageNineOnly,$MapKeyOnly,$StageTwoMapOnly,$StageThreeItineraryOnly,$TravelEntryOnly,$AiMemoriesOnly,$AuditFixesOnly,$TravelDraftOnly,$UiPolishOnly,$TravelDayOnly,$MeituanOnly) | Where-Object { $_ }).Count -gt 1){throw 'Choose only one focused test suite.'}
 if($Device -notmatch '^emulator-\d+$'){throw 'Run these integration tests on a disposable emulator only.'}
 $SdkPath=(Resolve-Path -LiteralPath $SdkPath).Path
 $JdkPath=(Resolve-Path -LiteralPath $JdkPath).Path
@@ -38,10 +44,11 @@ $manifest='<manifest xmlns:android="http://schemas.android.com/apk/res/android" 
 Invoke-Checked "$bt/aapt2.exe" @('link','-o',"$testBuild/unsigned.apk",'-I',$platform,'--manifest',"$testBuild/AndroidManifest.xml",'-A',$fixtureAssets)
 $tests=@(Get-ChildItem "$PSScriptRoot/tests/android" -Recurse -Filter *.java | ForEach-Object FullName)
 $testLibraries=@();$lock=Get-Content "$PSScriptRoot/dependencies-lock.json" -Raw|ConvertFrom-Json;foreach($dependency in $lock){$candidate=Join-Path (Split-Path $AppBuildDirectory -Parent) "vendor/network/$($dependency.file)";if(!(Test-Path $candidate)){$candidate=Join-Path "$PSScriptRoot/build-manual/network" $dependency.file}if(Test-Path $candidate){$testLibraries+=(Resolve-Path $candidate).Path}}
+$baiduTestLib=Join-Path (Split-Path $AppBuildDirectory -Parent) "vendor/baidu";if(!(Test-Path $baiduTestLib)){$baiduTestLib="$PSScriptRoot/build-manual/baidu"};if(Test-Path $baiduTestLib){$testLibraries+=@(Get-ChildItem $baiduTestLib -Filter *.jar | ForEach-Object FullName)}
 $testClasspath=(@($platform,"$AppBuildDirectory/classes")+$testLibraries)-join ';'
 Invoke-Checked "$JdkPath/bin/javac.exe" (@('-encoding','UTF-8','-source','17','-target','17','-classpath',$testClasspath,'-d',"$testBuild/classes")+$tests)
 Compress-Archive -Path "$testBuild/classes/*" -DestinationPath "$testBuild/tests.zip" -Force
-Invoke-Checked "$bt/d8.bat" @('--lib',$platform,'--classpath',"$AppBuildDirectory/classes.zip",'--min-api','26','--output',"$testBuild/dex","$testBuild/tests.zip")
+$testDexArgs=@('--lib',$platform,'--classpath',"$AppBuildDirectory/classes.zip");foreach($library in $testLibraries){$testDexArgs+=@('--classpath',$library)};$testDexArgs+=@('--min-api','26','--output',"$testBuild/dex","$testBuild/tests.zip");Invoke-Checked "$bt/d8.bat" $testDexArgs
 Push-Location "$testBuild/dex"
 try{Invoke-Checked "$bt/aapt.exe" @('add',"$testBuild/unsigned.apk",'classes.dex')}finally{Pop-Location}
 Invoke-Checked "$bt/zipalign.exe" @('-f','4',"$testBuild/unsigned.apk","$testBuild/aligned.apk")
@@ -53,7 +60,13 @@ if($StageNineOnly){$instrumentArgs+=@('-e','stageNineOnly','true')}
 if($MapKeyOnly){$instrumentArgs+=@('-e','mapKeyOnly','true')}
 if($StageTwoMapOnly){$instrumentArgs+=@('-e','stageTwoMapOnly','true')}
 if($StageThreeItineraryOnly){$instrumentArgs+=@('-e','stageThreeItineraryOnly','true')}
+if($TravelEntryOnly){$instrumentArgs+=@('-e','travelEntryOnly','true')}
 if($AiMemoriesOnly){$instrumentArgs+=@('-e','aiMemoriesOnly','true')}
+if($AuditFixesOnly){$instrumentArgs+=@('-e','auditFixesOnly','true')}
+if($TravelDayOnly){$instrumentArgs+=@('-e','travelDayOnly','true')}
+if($UiPolishOnly){$instrumentArgs+=@('-e','uiPolishOnly','true')}
+if($MeituanOnly){$instrumentArgs+=@('-e','meituanOnly','true')}
+if($TravelDraftOnly){$instrumentArgs+=@('-e','travelDraftOnly','true')}
 $instrumentArgs+='cn.lvxu.travel.tests/cn.lvxu.travel.IntegrationInstrumentation'
 $testOutput = & "$SdkPath/platform-tools/adb.exe" @instrumentArgs
 $testExit = $LASTEXITCODE

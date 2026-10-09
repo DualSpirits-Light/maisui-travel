@@ -1,6 +1,5 @@
 package cn.lvxu.travel;
 
-import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
 import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
@@ -15,7 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Date and time fields that keep manual entry available alongside native pickers. */
+/** Editable date/time fields with an app calendar and native clock pickers. */
 final class DateTimeFields {
     private static final DateTimeFormatter DATE=DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter TIME=DateTimeFormatter.ofPattern("HH:mm");
@@ -46,10 +45,9 @@ final class DateTimeFields {
         field.setInputType(InputType.TYPE_CLASS_TEXT);
         picker(field).setOnClickListener(v->{
             LocalDateTime base=parseDateTime(field.getText().toString(),LocalDateTime.now());
-            new DatePickerDialog(a,(dialog,year,month,day)->{
-                LocalDate selected=LocalDate.of(year,month+1,day);
+            RoundedDatePicker.show(a,base.toLocalDate(),selected->{
                 new TimePickerDialog(a,(clock,hour,minute)->field.setText(LocalDateTime.of(selected,LocalTime.of(hour,minute)).format(DATE_TIME)),base.getHour(),base.getMinute(),true).show();
-            },base.getYear(),base.getMonthValue()-1,base.getDayOfMonth()).show();
+            });
         });
         return field;
     }
@@ -80,7 +78,8 @@ final class DateTimeFields {
         field.setPadding(a.dp(14),a.dp(12),a.dp(8),a.dp(12));
         GradientDrawable background=a.shape(MainActivity.SURFACE,12);
         background.setStroke(a.dp(1),MainActivity.LINE);
-        field.setBackground(background);
+        row.setBackground(background);
+        field.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         field.setTextColor(MainActivity.INK);
         field.setHintTextColor(MainActivity.MUTED);
         field.setSingleLine(true);
@@ -88,13 +87,15 @@ final class DateTimeFields {
         ImageButton picker=new ImageButton(a);
         picker.setImageResource(R.drawable.ic_calendar);
         picker.setColorFilter(MainActivity.INK);
-        picker.setBackground(a.shape(MainActivity.PALE,12));
+        picker.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        picker.setBackgroundTintList(null);
+
         picker.setContentDescription(pickerDescription);
         picker.setFocusable(true);
         picker.setPadding(a.dp(12),a.dp(12),a.dp(12),a.dp(12));
         LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));
         buttonParams.gravity=Gravity.CENTER_VERTICAL;
-        buttonParams.leftMargin=a.dp(8);
+
         row.addView(picker,buttonParams);
         form.addView(row,new LinearLayout.LayoutParams(-1,-2));
         a.space(form,12);
@@ -103,7 +104,7 @@ final class DateTimeFields {
     }
 
     private static ImageButton picker(EditText field){return (ImageButton)field.getTag();}
-    private static void pickDate(MainActivity a,EditText field,LocalDate base){new DatePickerDialog(a,(dialog,year,month,day)->field.setText(LocalDate.of(year,month+1,day).format(DATE)),base.getYear(),base.getMonthValue()-1,base.getDayOfMonth()).show();}
+    private static void pickDate(MainActivity a,EditText field,LocalDate base){RoundedDatePicker.show(a,base,selected->field.setText(selected.format(DATE)));}
     private static void pickTime(MainActivity a,EditText field,LocalTime base){new TimePickerDialog(a,(dialog,hour,minute)->field.setText(LocalTime.of(hour,minute).format(TIME)),base.getHour(),base.getMinute(),true).show();}
     private static LocalDate parseDate(String text,LocalDate fallback){try{return LocalDate.parse(text.trim(),DATE);}catch(Exception ignored){return fallback;}}
     private static LocalTime parseTime(String text,LocalTime fallback){try{return LocalTime.parse(text.trim(),TIME);}catch(Exception ignored){return fallback;}}

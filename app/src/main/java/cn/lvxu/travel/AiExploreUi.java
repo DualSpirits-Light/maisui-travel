@@ -118,7 +118,7 @@ final class AiExploreUi {
    if(a.active!=current||!a.trips.contains(current))throw new IllegalArgumentException("当前旅行已变化，请重新生成建议");
    Trip target=proposal.apply(current,selected);ArrayList<Trip> merged=new ArrayList<>(a.trips);merged.set(merged.indexOf(current),target);TripStore.sort(merged);
    try{a.store.save(merged);}catch(Exception failure){a.toast("保存失败，原行程已保留，请检查存储空间后重试");return;}
-   a.trips=merged;a.active=target;a.render();page.dialog.dismiss();a.toast("已应用 "+selected.size()+" 项建议");
+   a.recordUndo("AI 行程建议",current,target);a.trips=merged;a.active=target;a.render();page.dialog.dismiss();a.toast("已应用 "+selected.size()+" 项建议");
   }catch(Exception e){a.toast(message(e));}
  }
   static String searchRequest(String key,String query)throws Exception{if(key==null||key.trim().isEmpty())throw new IllegalArgumentException("请填写百度智能搜索 API Key");okhttp3.Request request=ApiHttp.post(BAIDU,BaiduSearch.requestBody(query),"Authorization","Bearer "+key.trim());return BaiduSearch.parse(ApiHttp.json(request));}

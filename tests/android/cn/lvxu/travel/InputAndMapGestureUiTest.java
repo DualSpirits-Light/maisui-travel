@@ -1,0 +1,49 @@
+package cn.lvxu.travel;
+
+import android.app.*;
+import android.content.*;
+import android.graphics.*;
+import android.os.SystemClock;
+import android.view.*;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inspector.WindowInspector;
+import android.view.accessibility.*;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.widget.*;
+import java.io.*;
+import java.util.*;
+
+/** Dedicated-emulator coverage of a real keyboard and map touch ownership. */
+final class InputAndMapGestureUiTest {
+ static int run(Instrumentation in)throws Exception {
+  Context context=in.getTargetContext();TestStartupGuard startup=new TestStartupGuard(context);MainActivity activity=null;UiAutomation ui=in.getUiAutomation();AccessibilityServiceInfo previous=ui.getServiceInfo();int oldFlags=previous.flags;int checks=0;
+  try {
+   previous.flags|=AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;ui.setServiceInfo(previous);
+   activity=(MainActivity)in.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP));MainActivity host=activity;in.waitForIdleSync();
+   Trip trip=Trip.demo();trip.stops.clear();in.runOnMainSync(()->{host.trips.clear();host.trips.add(trip);host.active=trip;host.day=0;host.page=1;host.render();host.stopEditor(null);});in.waitForIdleSync();
+   in.runOnMainSync(()->{for(View window:WindowInspector.getGlobalWindowViews()){View more=findText(window,"更多信息（选填） ▾");if(more!=null){more.performClick();break;}}});in.waitForIdleSync();
+   final EditText[] focused={null};in.runOnMainSync(()->{for(View window:WindowInspector.getGlobalWindowViews()){EditText note=followingField(window,"备注");if(note!=null){focused[0]=note;break;}}if(focused[0]==null)throw new AssertionError("note input missing");focused[0].setText("键盘避让测试：输入较长备注后仍能操作保存与取消。");focused[0].requestFocus();((InputMethodManager)host.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(focused[0],InputMethodManager.SHOW_IMPLICIT);});
+   Rect keyboard=null;for(int i=0;i<60;i++){keyboard=keyboardBounds(ui);if(keyboard!=null)break;SystemClock.sleep(100);}if(keyboard==null)throw new AssertionError("actual IME did not appear");checks++;
+   in.waitForIdleSync();SystemClock.sleep(300);final Rect input=new Rect(),visible=new Rect();in.runOnMainSync(()->{int[] location=new int[2];focused[0].getLocationOnScreen(location);input.set(location[0],location[1],location[0]+focused[0].getWidth(),location[1]+focused[0].getHeight());focused[0].getRootView().getWindowVisibleDisplayFrame(visible);});
+   if(input.isEmpty()||input.bottom>keyboard.top||input.bottom>visible.bottom)throw new AssertionError("focused lower note covered by IME: input="+input+" keyboard="+keyboard+" frame="+visible);checks++;
+   if(!accessibleButton(ui,"保存",keyboard.top)||!accessibleButton(ui,"取消",keyboard.top))throw new AssertionError("expense/stop dialog buttons not accessible above real keyboard");checks++;
+   capture(in,"keyboard-note.png");AccessibilityNodeInfo cancel=applicationNode(ui,"取消");if(cancel==null||!cancel.performAction(AccessibilityNodeInfo.ACTION_CLICK))throw new AssertionError("cannot cancel while typing");SystemClock.sleep(200);in.waitForIdleSync();if(!trip.stops.isEmpty())throw new AssertionError("keyboard cancellation created a stop");checks++;
+   final TrackingScroll[] parent={null};final TouchChild[] child={null};in.runOnMainSync(()->{TrackingScroll scroll=new TrackingScroll(host);LinearLayout column=new LinearLayout(host);column.setOrientation(LinearLayout.VERTICAL);MapGestureFrame frame=new MapGestureFrame(host);TouchChild surface=new TouchChild(host);frame.addView(surface,new FrameLayout.LayoutParams(-1,-1));column.addView(frame,new LinearLayout.LayoutParams(-1,host.dp(380)));View filler=new View(host);column.addView(filler,new LinearLayout.LayoutParams(-1,host.dp(1600)));scroll.addView(column);host.setContentView(scroll);parent[0]=scroll;child[0]=surface;});in.waitForIdleSync();
+   final long down=SystemClock.uptimeMillis();in.runOnMainSync(()->{TrackingScroll scroll=parent[0];send(scroll,event(down,down,MotionEvent.ACTION_DOWN,1,120));if(!scroll.blocked)throw new AssertionError("map DOWN did not block parent interception");send(scroll,event(down,down+16,MotionEvent.ACTION_MOVE,1,70));send(scroll,event(down,down+32,MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,70));send(scroll,event(down,down+48,MotionEvent.ACTION_MOVE,2,35));if(!scroll.blocked||scroll.getScrollY()!=0)throw new AssertionError("parent scrolled during map gesture");send(scroll,event(down,down+64,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,35));if(!scroll.blocked)throw new AssertionError("pointer-up released map gesture early");send(scroll,event(down,down+80,MotionEvent.ACTION_UP,1,35));if(scroll.blocked)throw new AssertionError("UP did not release parent interception");});checks+=4;
+   if(child[0].maxPointers!=2||!child[0].actions.contains(MotionEvent.ACTION_POINTER_DOWN)||!child[0].actions.contains(MotionEvent.ACTION_UP)||child[0].actions.contains(MotionEvent.ACTION_CANCEL))throw new AssertionError("map child lost multi-touch sequence");checks++;
+   in.runOnMainSync(()->{send(parent[0],event(down+100,down+100,MotionEvent.ACTION_DOWN,1,100));send(parent[0],event(down+100,down+116,MotionEvent.ACTION_CANCEL,1,100));if(parent[0].blocked)throw new AssertionError("CANCEL did not release map interception");});if(!child[0].actions.contains(MotionEvent.ACTION_CANCEL))throw new AssertionError("map child missing CANCEL");checks++;
+   return checks;
+  }finally{if(activity!=null){MainActivity host=activity;in.runOnMainSync(()->{((InputMethodManager)host.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(host.getWindow().getDecorView().getWindowToken(),0);host.finish();});in.waitForIdleSync();}AccessibilityServiceInfo restore=ui.getServiceInfo();restore.flags=oldFlags;ui.setServiceInfo(restore);startup.close();}
+ }
+ private static View findText(View v,String text){if(v instanceof TextView&&text.contentEquals(((TextView)v).getText()))return v;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View found=findText(g.getChildAt(i),text);if(found!=null)return found;}}return null;}
+ private static EditText followingField(View root,String label){if(root instanceof ViewGroup){ViewGroup group=(ViewGroup)root;for(int i=0;i<group.getChildCount();i++){View view=group.getChildAt(i);if(view instanceof TextView&&label.contentEquals(((TextView)view).getText()))for(int j=i+1;j<group.getChildCount();j++){View next=group.getChildAt(j);if(next instanceof EditText)return (EditText)next;if(next instanceof TextView)break;}EditText found=followingField(view,label);if(found!=null)return found;}}return null;}
+ private static Rect keyboardBounds(UiAutomation ui){for(AccessibilityWindowInfo window:ui.getWindows())if(window.getType()==AccessibilityWindowInfo.TYPE_INPUT_METHOD){Rect bounds=new Rect();window.getBoundsInScreen(bounds);if(!bounds.isEmpty())return bounds;}return null;}
+ private static boolean accessibleButton(UiAutomation ui,String title,int imeTop){AccessibilityNodeInfo node=applicationNode(ui,title);if(node==null||!node.isVisibleToUser()||!node.isEnabled())return false;while(node!=null&&!node.isClickable())node=node.getParent();if(node==null)return false;Rect rect=new Rect();node.getBoundsInScreen(rect);return !rect.isEmpty()&&rect.bottom<=imeTop;}
+ private static AccessibilityNodeInfo applicationNode(UiAutomation ui,String label){for(AccessibilityWindowInfo window:ui.getWindows())if(window.getType()==AccessibilityWindowInfo.TYPE_APPLICATION){AccessibilityNodeInfo node=find(window.getRoot(),label);if(node!=null)return node;}return null;}
+ private static AccessibilityNodeInfo find(AccessibilityNodeInfo node,String label){if(node==null)return null;if(label.contentEquals(node.getText()==null?"":node.getText()))return node;for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i),label);if(found!=null)return found;}return null;}
+ private static void capture(Instrumentation in,String name)throws Exception{Bitmap image=in.getUiAutomation().takeScreenshot();if(image==null)return;File directory=new File(in.getTargetContext().getExternalFilesDir(null),"stage16-evidence");directory.mkdirs();try(OutputStream out=new FileOutputStream(new File(directory,name))){image.compress(Bitmap.CompressFormat.PNG,100,out);}finally{image.recycle();}}
+ private static void send(View target,MotionEvent event){try{target.dispatchTouchEvent(event);}finally{event.recycle();}}
+ private static MotionEvent event(long down,long time,int action,int pointers,float y){MotionEvent.PointerProperties[] properties=new MotionEvent.PointerProperties[pointers];MotionEvent.PointerCoords[] coords=new MotionEvent.PointerCoords[pointers];for(int i=0;i<pointers;i++){properties[i]=new MotionEvent.PointerProperties();properties[i].id=i;properties[i].toolType=MotionEvent.TOOL_TYPE_FINGER;coords[i]=new MotionEvent.PointerCoords();coords[i].x=100+i*80;coords[i].y=y+i*10;coords[i].pressure=1;coords[i].size=1;}return MotionEvent.obtain(down,time,action,pointers,properties,coords,0,0,1,1,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0);}
+ private static final class TrackingScroll extends ScrollView{boolean blocked;TrackingScroll(Context c){super(c);}@Override public void requestDisallowInterceptTouchEvent(boolean disallow){blocked=disallow;super.requestDisallowInterceptTouchEvent(disallow);}}
+ private static final class TouchChild extends View{int maxPointers;final ArrayList<Integer> actions=new ArrayList<>();TouchChild(Context c){super(c);setBackgroundColor(0xffbdd8c1);}@Override public boolean onTouchEvent(MotionEvent event){maxPointers=Math.max(maxPointers,event.getPointerCount());actions.add(event.getActionMasked());return true;}}
+}

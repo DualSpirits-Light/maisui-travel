@@ -53,7 +53,7 @@ final class StopReorderLayout extends LinearLayout {
     private void finish(boolean accept){
         removeCallbacks(edgeScroll);View held=dragged;dragged=null;dragToken=null;moving=false;if(held==null)return;held.setAlpha(1f);
         ArrayList<String> ids=new ArrayList<>();boolean different=false;for(int i=0;i<getChildCount();i++){View child=getChildAt(i);child.animate().cancel();child.setTranslationY(0);ids.add(stops.get(child).id);if(i>=original.size()||original.get(i)!=child)different=true;}
-        if(accept&&different&&a.trips.contains(trip)){ScrollView oldScroll=scroll();int offset=oldScroll==null?0:oldScroll.getScrollY();try{trip.reorderDay(day,ids);a.changed();if(a.body.getParent() instanceof ScrollView){ScrollView current=(ScrollView)a.body.getParent();current.post(()->current.scrollTo(0,offset));}}catch(IllegalArgumentException e){a.toast(e.getMessage());a.render();}}
+        if(accept&&different&&a.trips.contains(trip)){ScrollView oldScroll=scroll();int offset=oldScroll==null?0:oldScroll.getScrollY();try{Trip before=TravelAdjustment.copy(trip);trip.reorderDay(day,ids);if(!a.save()){ArrayList<String> oldIds=new ArrayList<>();for(Trip.Stop stop:before.onDay(day))oldIds.add(stop.id);trip.reorderDay(day,oldIds);a.render();return;}a.recordUndo("地点排序",before,trip);a.render();if(a.body.getParent() instanceof ScrollView){ScrollView current=(ScrollView)a.body.getParent();current.post(()->current.scrollTo(0,offset));}}catch(IllegalArgumentException e){a.toast(e.getMessage());a.render();}}
         else if(!accept&&different){IdentityHashMap<View,Float> old=positions();removeAllViews();for(View child:original)addView(child);animatePositions(old);}
         original.clear();
     }

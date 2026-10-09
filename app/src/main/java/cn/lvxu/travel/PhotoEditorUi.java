@@ -13,7 +13,7 @@ final class PhotoEditorUi {
 
  private static final class Editor implements Application.ActivityLifecycleCallbacks {
   final MainActivity a;final Uri original;final MainActivity.ImageCallback saved;final Runnable cancelled;
-  final PhotoEditSession session;final Dialog dialog;final EditorView canvas;final LinearLayout root;final TextView hint,save;TextView crop,brush;
+  final PhotoEditSession session;final Dialog dialog;final EditorView canvas;final LinearLayout root;final TextView hint,save;TextView crop,brush,undo,redo;
   boolean busy,delivered,closed;AlertDialog confirmation;
   Editor(MainActivity a,Bitmap source,Uri original,MainActivity.ImageCallback saved,Runnable cancelled){
    this.a=a;this.original=original;this.saved=saved;this.cancelled=cancelled;
@@ -29,16 +29,18 @@ final class PhotoEditorUi {
    TextView rotate=a.action("旋转 90°",false,()->{if(busy)return;canvas.applyCrop();session.rotateClockwise();canvas.mode=0;normal();canvas.invalidate();});
    brush=a.action("画笔",false,()->{if(busy)return;canvas.applyCrop();canvas.mode=canvas.mode==2?0:2;crop.setText("自由裁剪");brush.setText(canvas.mode==2?"完成画笔":"画笔");hint.setText(canvas.mode==2?"在照片上绘画，画笔颜色为红色":"保留当前画面，点右上角 √ 保存");canvas.invalidate();});
    for(TextView tool:new TextView[]{crop,rotate,brush}){LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,a.dp(52),1);params.setMargins(a.dp(3),0,a.dp(3),0);tools.addView(tool,params);}root.addView(tools);
+   LinearLayout history=a.row();undo=a.action("撤销画笔",false,()->{if(busy)return;session.undo();canvas.invalidate();updateHistory();});redo=a.action("恢复画笔",false,()->{if(busy)return;session.redo();canvas.invalidate();updateHistory();});for(TextView tool:new TextView[]{undo,redo})history.addView(tool,new LinearLayout.LayoutParams(0,a.dp(44),1));root.addView(history);canvas.historyChanged=this::updateHistory;updateHistory();
    dialog.setContentView(root);dialog.setOnDismissListener(d->{closed=true;if(confirmation!=null)confirmation.dismiss();a.getApplication().unregisterActivityLifecycleCallbacks(this);if(!busy)session.close();if(!delivered&&cancelled!=null)cancelled.run();});
   }
   Dialog show(){a.getApplication().registerActivityLifecycleCallbacks(this);dialog.show();Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));window.setLayout(-1,-1);window.setStatusBarColor(MainActivity.BG);window.setNavigationBarColor(MainActivity.BG);window.getDecorView().setSystemUiVisibility(MainActivity.DARK?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);}return dialog;}
-  void normal(){canvas.mode=0;crop.setText("自由裁剪");brush.setText("画笔");hint.setText("保留当前画面，点右上角 √ 保存");canvas.invalidate();}
+  void updateHistory(){undo.setEnabled(!busy&&session.canUndo());redo.setEnabled(!busy&&session.canRedo());undo.setAlpha(undo.isEnabled()?1f:.4f);redo.setAlpha(redo.isEnabled()?1f:.4f);}
+  void normal(){canvas.mode=0;crop.setText("自由裁剪");brush.setText("画笔");hint.setText("保留当前画面，点右上角 √ 保存");canvas.invalidate();updateHistory();}
   void discard(){if(busy||closed)return;if(confirmation!=null&&confirmation.isShowing())return;confirmation=new RoundedDialogs.Builder(a).setTitle("放弃本次编辑？").setMessage("本次修改不会保存，原照片保持不变。").setNegativeButton("继续编辑",null).setPositiveButton("确认放弃",(d,w)->dialog.dismiss()).create();confirmation.show();}
   void save(){
-   if(busy||closed)return;canvas.applyCrop();busy=true;save.setEnabled(false);hint.setText("正在保存照片…");canvas.setEnabled(false);
+   if(busy||closed)return;canvas.applyCrop();busy=true;save.setEnabled(false);hint.setText("正在保存照片…");canvas.setEnabled(false);updateHistory();
    new Thread(()->{String result=null;try{result=session.save(a.media.files,original);}catch(Exception|OutOfMemoryError ignored){}final String path=result;
     a.runOnUiThread(()->{busy=false;if(closed||a.isFinishing()||a.isDestroyed()){if(path!=null)a.media.files.file(path).delete();session.close();if(dialog.isShowing())dialog.dismiss();return;}
-     if(path==null){save.setEnabled(true);canvas.setEnabled(true);hint.setText("保存失败，可重试或放弃编辑");a.toast("失败：无法保存照片，请检查存储空间");return;}
+     if(path==null){save.setEnabled(true);canvas.setEnabled(true);updateHistory();hint.setText("保存失败，可重试或放弃编辑");a.toast("失败：无法保存照片，请检查存储空间");return;}
      delivered=true;dialog.dismiss();if(saved!=null)saved.selected(path);a.toast("成功");
     });
    },"photo-editor-save").start();
@@ -55,11 +57,11 @@ final class PhotoEditorUi {
  /** Fit-center display only; all edits are expressed in the image's own coordinates. */
  private static final class EditorView extends View {
   final PhotoEditSession session;final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);final RectF frame=new RectF(),selection=new RectF();
-  int mode,corner;float lastX,lastY;
+  int mode,corner;float lastX,lastY;Runnable historyChanged=()->{};
   EditorView(MainActivity a,PhotoEditSession session){super(a);this.session=session;}
   void imageFrame(){Bitmap b=session.bitmap();float scale=Math.min(getWidth()/(float)b.getWidth(),getHeight()/(float)b.getHeight());float w=b.getWidth()*scale,h=b.getHeight()*scale;frame.set((getWidth()-w)/2,(getHeight()-h)/2,(getWidth()+w)/2,(getHeight()+h)/2);}
   void startCrop(){mode=1;selection.set(0,0,session.bitmap().getWidth(),session.bitmap().getHeight());invalidate();}
-  void applyCrop(){if(mode!=1)return;Rect area=new Rect(Math.max(0,(int)selection.left),Math.max(0,(int)selection.top),Math.min(session.bitmap().getWidth(),(int)Math.ceil(selection.right)),Math.min(session.bitmap().getHeight(),(int)Math.ceil(selection.bottom)));if(!area.isEmpty())session.crop(area);mode=0;invalidate();}
+  void applyCrop(){if(mode!=1)return;Rect area=new Rect(Math.max(0,(int)selection.left),Math.max(0,(int)selection.top),Math.min(session.bitmap().getWidth(),(int)Math.ceil(selection.right)),Math.min(session.bitmap().getHeight(),(int)Math.ceil(selection.bottom)));if(!area.isEmpty())session.crop(area);mode=0;invalidate();historyChanged.run();}
   float imageX(float x){return Math.max(0,Math.min(session.bitmap().getWidth(),(x-frame.left)*session.bitmap().getWidth()/frame.width()));}
   float imageY(float y){return Math.max(0,Math.min(session.bitmap().getHeight(),(y-frame.top)*session.bitmap().getHeight()/frame.height()));}
   @Override protected void onDraw(Canvas c){super.onDraw(c);if(session.bitmap().isRecycled())return;imageFrame();paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);c.drawBitmap(session.bitmap(),null,frame,paint);if(mode!=1)return;
@@ -68,9 +70,9 @@ final class PhotoEditorUi {
    paint.setColor(Color.WHITE);paint.setStrokeWidth(2*getResources().getDisplayMetrics().density);paint.setStyle(Paint.Style.STROKE);c.drawRect(r,paint);paint.setStyle(Paint.Style.FILL);float radius=7*getResources().getDisplayMetrics().density;for(float x:new float[]{r.left,r.right})for(float y:new float[]{r.top,r.bottom})c.drawCircle(x,y,radius,paint);
   }
   @Override public boolean onTouchEvent(MotionEvent e){if(!isEnabled()||mode==0||session.bitmap().isRecycled())return false;imageFrame();float x=imageX(e.getX()),y=imageY(e.getY());int action=e.getActionMasked();
-   if(action==MotionEvent.ACTION_DOWN){if(!frame.contains(e.getX(),e.getY()))return false;lastX=x;lastY=y;corner=(x>selection.centerX()?1:0)+(y>selection.centerY()?2:0);getParent().requestDisallowInterceptTouchEvent(true);if(mode==2)session.stroke(x,y,x,y,0xffEE554F,Math.max(2,session.bitmap().getWidth()/180f));}
+   if(action==MotionEvent.ACTION_DOWN){if(!frame.contains(e.getX(),e.getY()))return false;lastX=x;lastY=y;corner=(x>selection.centerX()?1:0)+(y>selection.centerY()?2:0);getParent().requestDisallowInterceptTouchEvent(true);if(mode==2){session.beginStroke();session.stroke(x,y,x,y,0xffEE554F,Math.max(2,session.bitmap().getWidth()/180f));}}
    else if(action==MotionEvent.ACTION_MOVE){if(mode==2){session.stroke(lastX,lastY,x,y,0xffEE554F,Math.max(2,session.bitmap().getWidth()/180f));lastX=x;lastY=y;}else{if((corner&1)==0)selection.left=Math.min(x,selection.right-1);else selection.right=Math.max(x,selection.left+1);if((corner&2)==0)selection.top=Math.min(y,selection.bottom-1);else selection.bottom=Math.max(y,selection.top+1);}}
-   else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)getParent().requestDisallowInterceptTouchEvent(false);invalidate();return true;
+   else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){if(mode==2)session.endStroke();getParent().requestDisallowInterceptTouchEvent(false);historyChanged.run();}invalidate();return true;
   }
  }
 }

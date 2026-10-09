@@ -64,7 +64,7 @@ final class MapUi {
             }
         });
         web.setOnTouchListener((v,event)->{v.getParent().requestDisallowInterceptTouchEvent(event.getAction()!=MotionEvent.ACTION_UP);return false;});
-        a.body.addView(web,new LinearLayout.LayoutParams(-1,a.dp(380)));
+        MapGestureFrame gestures=new MapGestureFrame(a);gestures.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));a.body.addView(gestures,new LinearLayout.LayoutParams(-1,a.dp(380)));
         String data=points.toString().replace("<","\\u003c").replace("\u2028","\\u2028").replace("\u2029","\\u2029");
         String html="<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><link rel='stylesheet' href='leaflet.css'><style>html,body,#map{height:100%;margin:0;font:13px sans-serif}#hint{position:absolute;z-index:1000;top:10px;left:55px;background:#fff;padding:8px;border-radius:8px;max-width:70%}.pin{background:#23644f;color:white;border:2px solid white;border-radius:50%;text-align:center;line-height:28px;font-weight:bold}</style></head><body><div id='map'></div><div id='hint'>双指缩放 · 长按地图添加地点</div><script src='leaflet.js'></script><script>"+
             "const points="+data+";const map=L.map('map',{zoomControl:true}).setView([30.25,120.14],12);"+

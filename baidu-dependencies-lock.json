@@ -1,0 +1,6 @@
+[
+  {"file":"BaiduMapSDK_Map-8.2.0.aar","url":"https://repo.maven.apache.org/maven2/com/baidu/lbsyun/BaiduMapSDK_Map/8.2.0/BaiduMapSDK_Map-8.2.0.aar","sha256":"BBDD358D87FA9DD080BD3848546659591D33A380A9195EDB05F87C5C8988B690"},
+  {"file":"base-8.2.0.aar","url":"https://repo.maven.apache.org/maven2/com/baidu/lbsyun/base/8.2.0/base-8.2.0.aar","sha256":"F5331910F8E8909819DD250FBB3F9339293126344C3F2102C29E0E296E6891F7"},
+  {"file":"BaiduMapSDK_Util-8.2.0.aar","url":"https://repo.maven.apache.org/maven2/com/baidu/lbsyun/BaiduMapSDK_Util/8.2.0/BaiduMapSDK_Util-8.2.0.aar","sha256":"B916971AA6EB7CAEE31399563B3E0A6CE304B5F862BFC7CA4150A405D93ECE05"},
+  {"file":"common-1.0.43.aar","url":"https://repo.maven.apache.org/maven2/com/baidu/lbsyun/common/1.0.43/common-1.0.43.aar","sha256":"8A44709A0854A5310EC3D88167B5AA72BF568A32E8F3264825C8566AA2BC4E2E"}
+]

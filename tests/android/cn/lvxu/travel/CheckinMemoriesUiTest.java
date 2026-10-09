@@ -38,7 +38,7 @@ final class CheckinMemoriesUiTest {
             in.runOnMainSync(()->checkins.beginEdit(saved));in.waitForIdleSync();
             AlertDialog edit=(AlertDialog)get(checkins,"editor");
             String originalPlace=saved.place;String originalLink=saved.stopId;
-            in.runOnMainSync(()->{((EditText)safeGet(checkins,"place")).setText("不应保存");((EditText)safeGet(checkins,"companions")).setText(String.join("\n",java.util.Collections.nCopies(51,"同行")));edit.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});in.waitForIdleSync();
+            in.runOnMainSync(()->{((EditText)safeGet(checkins,"place")).setText("不应保存");((EditText)safeGet(checkins,"companions")).setText(java.util.stream.IntStream.range(0,51).mapToObj(i->"同行"+i).collect(java.util.stream.Collectors.joining("\n")));edit.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});in.waitForIdleSync();
             n+=check(originalPlace.equals(saved.place)&&originalLink.equals(saved.stopId)&&edit.isShowing(),"failed validation leaves saved record untouched");
             in.runOnMainSync(()->{((EditText)safeGet(checkins,"place")).setText(originalPlace);((EditText)safeGet(checkins,"companions")).setText("");});set(checkins,"draftStopId","");
             in.runOnMainSync(()->edit.getButton(AlertDialog.BUTTON_POSITIVE).performClick());in.waitForIdleSync();

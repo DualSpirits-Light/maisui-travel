@@ -49,6 +49,8 @@ Android：先运行专用模拟器，再安装本次被测 APK。`test-android.p
 
 更新专项可加 `-StageNineOnly`。测试 APK 必须与被测 App 同签名。模拟器测试不能并行启动多个 instrumentation，会互相终止进程。测试库按 `$buildOut` 的父目录寻找 vendor/network，因此以上布局应保留。
 
+出游体验专项使用 `-TravelDraftOnly`（名称沿用草稿专项，现包含地图标点选择、旅行草稿、预约调整/撤销和 AA 账本）。`-TravelEntryOnly` 验证城市、日历、标签、热力和照片录入；`-AuditFixesOnly` 验证此前审计修复。每项串行运行；不同专项开关不得组合。0.5.1-preview / 12 是本地体验测试版，不能当作已经部署的正式版本。
+
 Android Key 配置专项可加 `-MapKeyOnly`；不得与 `-StageNineOnly` 同时使用。它验证配置和入口行为，不代表 ARM 原生地图底图、真实 Key 鉴权或网络路线已通过真机验证。
 
 覆盖升级：以下命令会卸载**指定模拟器**的测试 App，再安装旧包、写入夹具、覆盖新包。仅用于专用模拟器，不可替换为用户手机序列号。
@@ -102,3 +104,23 @@ Wrangler OAuth、Git 凭据从本机既有登录读取，不写入项目。`../.
 `test-android.ps1 -AiMemoriesOnly` 运行 AI 预览/建议交互、打卡地点关联/按天浏览及完整 ZIP 分享关联验证。与其他专项互斥，须先构建并安装最新应用。使用合成 AI 响应，不调用付费接口；此结果不能描述成新的真实 AI 服务验证。
 
 统一开发输出使用 `../../work/build-next-integrated-0928`；此前阶段目录只保留历史证据。当前范围连续推进，用户要求暂停时再保存检查点，正式发布需另行授权。
+
+## 城市热力图依赖与专项回归
+
+手工构建现另接受 `-BaiduSdkDirectory` 缓存目录；四份 AAR（Map/base/Util 8.2.0、common 1.0.43）按 `baidu-dependencies-lock.json` 下载和核验，不能遗漏 base 的传递鉴权组件。详见 [百度城市热力图](BAIDU-CITY-HEATMAP.md)。
+
+`test-android.ps1 -TravelEntryOnly` 在一次性模拟器执行录入、标签、键盘、手势、费用照片及无 AK/拒绝隐私的热力入口检查。真实在线热力检查另需临时私人输入，禁止把 AK 写进构建参数、测试文件或 APK。
+
+2026-10-05 后续优化见 `superpowers/plans/2026-10-05-city-calendar-heat-browser.md`。聚焦测试 `-TravelEntryOnly` 包含目的地/日历/标签/城市搜索/收藏；真实接口测试需一次性私人输入百度 Android AK 和高德 Web 服务 Key，测试结束移除、恢复设置与权限。
+
+## 体验报告修复回归
+
+`test-android.ps1 -AuditFixesOnly` 在专用模拟器验证旅行编辑标志、打卡照片分类与草稿、SQLite 写入失败、页面重建接续原图导入、画笔撤销重做、备份冲突合并与损坏快照恢复。与其他专项互斥；测试会保存并恢复夹具前的旅行和设置，不得在真实用户手机运行。
+
+当前构建和日志在 `../../work/build-audit-fixes-1006`。最终状态以 [2026-10-06 检查点](checkpoints/2026-10-06-audit-fixes.md) 为准；模拟器结果不代表真实定位、在线热力、AI 服务或大陆网络下载重新验收。
+
+## 2026-10-07 界面专项
+
+`test-android.ps1 -UiPolishOnly` 验证紧凑行程卡、账单/分摊、小屏控制、导航语义和错误聚焦。用当前 APK 构建目录传 `-AppBuildDirectory`，其他 SDK、JDK、签名参数与上方示例一致。专项与其他 Only 开关互斥；仪器测试串行运行。截图在模拟器应用外部文件目录 `ui-polish-evidence`；截图等待主题变色稳定后获取。小屏测试改变模拟器分辨率/密度/字体后，结束时恢复原设置。
+
+`-TravelDayOnly` 验证出行速览入口、实际当天跳转、预约、窗口失焦停止计时与返回立即刷新、默认不带备注和实际剪贴板复制。截图在 `travel-day-evidence`。纯 Java 测试为 `TravelDaySummaryTest`（24项）与 `DayItineraryTextTest`（37项），以当前构建 classes 和仓库外 json.jar 为 classpath；覆盖跨午夜、重叠、拖动排序与允许导出字段，不依赖第三方在线服务。
