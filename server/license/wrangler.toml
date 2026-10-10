@@ -6,11 +6,11 @@ workers_dev = false
 routes = [{ pattern = "license.zjm0929.cn", custom_domain = true }]
 
 [vars]
-UPDATE_VERSION_CODE = "11"
-UPDATE_VERSION_NAME = "0.5.0"
-UPDATE_GITHUB_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.5.0/maisui-travel-0.5.0.apk"
-UPDATE_APK_SHA256 = "c407d7c8b3e56c8ddc0e7d2c4b60417fcfb06b462512a0fbc12397ca4f4c0316"
-UPDATE_NOTES = "新增主题配色与圆角窗口；完善地点详情、标签筛选、旅行打卡与照片编辑；优化 WebDAV、定位与统一管理后台；支持双线路下载、进度与通知。"
+UPDATE_VERSION_CODE = "15"
+UPDATE_VERSION_NAME = "0.6.0"
+UPDATE_GITHUB_APK_URL = "https://github.com/DualSpirits-Light/maisui-travel/releases/download/v0.6.0/maisui-travel-0.6.0.apk"
+UPDATE_APK_SHA256 = "762a2fb3f6b2ba8103b625dcd36f4cf50760c4b1eb0eff15d46a334ea04f99c2"
+UPDATE_NOTES = "新增美团旅行查询与服务端凭据保护；优化出行速览、日程预览、城市与地点录入、地图热力、AA 账本、回忆照片和深色界面；正式包加入代码混淆。"
 
 DEFAULT_LEASE_DAYS = "7"
 DEFAULT_MAX_DEVICES = "1"

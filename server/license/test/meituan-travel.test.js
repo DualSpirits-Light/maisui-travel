@@ -24,7 +24,7 @@ test('authenticated query forwards only the fixed official contract and no devic
   assert.equal(r.status,200); assert.deepEqual(await r.json(),{content:'杭州旅行建议',source:'美团旅行'});
   assert.equal(calls[0].url,'https://mcp-open-cater.meituan.com/v1/api/voyage/openapi/query');
   assert.equal(calls[0].options.headers.Authorization,'server-only-secret');
-  assert.equal(calls[0].options.redirect,'error');
+  assert.equal(calls[0].options.redirect,'manual');
   assert.deepEqual(JSON.parse(calls[0].options.body),{city:'杭州',query:'推荐一日游',originQuery:'推荐一日游',channel:'meituan-developer'});
 });
 for (const state of ['revoked_at','frozen_at','expires_at']) test('denies '+state,async t=>{

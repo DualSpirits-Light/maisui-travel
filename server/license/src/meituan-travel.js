@@ -9,7 +9,8 @@ function setting(env, key, fallback, max) {
 }
 
 async function boundedJson(response) {
-  if (!response.ok || !response.body || Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) throw new Error('upstream');
+  if (!response.ok) throw Object.assign(new Error('upstream'), {stage:'http', status:response.status});
+  if (!response.body || Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) throw Object.assign(new Error('upstream'), {stage:'body'});
   const reader = response.body.getReader();
   const chunks = []; let size = 0;
   try {
@@ -75,15 +76,16 @@ export function createTravelHandler({readJson, HttpError, json, rateLimit}) {
       try {
         const deadline = new Promise((_,reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); },setting(env,'TRAVEL_TIMEOUT_MS',110000,115000)); });
         const result = await Promise.race([ (async () => {
-          const response = await fetch(UPSTREAM,{method:'POST',redirect:'error',signal:controller.signal,
+          const response = await fetch(UPSTREAM,{method:'POST',redirect:'manual',signal:controller.signal,
             headers:{Authorization:env.MEITUAN_TRAVEL_TOKEN,'Content-Type':'application/json'},
             body:JSON.stringify({city,query,originQuery:query,channel:'meituan-developer'})});
           const value = await boundedJson(response);
-          if (value.code !== 0 || typeof value.data !== 'string' || !value.data.trim()) throw new Error('upstream');
+          if (value.code !== 0 || typeof value.data !== 'string' || !value.data.trim()) throw Object.assign(new Error('upstream'), {stage:'result', upstreamCode:Number.isSafeInteger(value.code)?value.code:null});
           return value.data;
         })(), deadline]);
         return json(200,{content:result,source:'美团旅行'});
-      } catch {
+      } catch (error) {
+        console.warn(JSON.stringify({event:'travel_upstream_failure',stage:['http','body','result'].includes(error?.stage)?error.stage:'transport',status:Number.isInteger(error?.status)?error.status:null,code:Number.isSafeInteger(error?.upstreamCode)?error.upstreamCode:null,timeout:controller.signal.aborted,kind:['TypeError','SyntaxError','Error','RangeError'].includes(error?.name)?error.name:'other',cause:/header/i.test(error?.message||'')?'header':/network|connection/i.test(error?.message||'')?'connection':/json|token|unexpected/i.test(error?.message||'')?'format':/upstream/i.test(error?.message||'')?'upstream':'other'}));
         if (controller.signal.aborted) fail(504,'TRAVEL_TIMEOUT','旅行查询超时，请稍后重试');
         fail(502,'TRAVEL_UNAVAILABLE','旅行查询暂不可用，请稍后重试');
       } finally {

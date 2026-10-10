@@ -18,7 +18,7 @@
 
 成功：`{"content":"旅行建议文本","source":"美团旅行"}`。失败：`{"error":{"code":"TRAVEL_UNAVAILABLE","message":"旅行查询暂不可用，请稍后重试"}}`。错误码包含 `INVALID_REQUEST`、`INVALID_CREDENTIAL`、`LICENSE_REVOKED`、`LICENSE_FROZEN`、`LICENSE_EXPIRED`、`RATE_LIMITED`、`TRAVEL_LIMIT_REACHED`、`TRAVEL_UNAVAILABLE`、`TRAVEL_TIMEOUT`。错误不透传上游响应、异常或凭据。结果为第三方文本，客户端应作为文本显示，不能直接作为可信 HTML 执行。
 
-完整 JSON 请求最多 4096 UTF-8 字节，城市最多80字符，查询最多1500字符；中文长查询通常先触及字节限制。上游固定为 `https://mcp-open-cater.meituan.com/v1/api/voyage/openapi/query`，使用原始 `Authorization` Secret。只发送 `city`、`query`、与 query 相同的 `originQuery` 和固定 `channel: meituan-developer`；不发送本应用设备凭据。禁止重定向，无自动重试，仅接受 `code: 0` 和非空字符串 `data`。响应最多256KiB，默认总上游超时110秒。
+完整 JSON 请求最多 4096 UTF-8 字节，城市最多80字符，查询最多1500字符；中文长查询通常先触及字节限制。上游固定为 `https://mcp-open-cater.meituan.com/v1/api/voyage/openapi/query`，使用原始 `Authorization` Secret。只发送 `city`、`query`、与 query 相同的 `originQuery` 和固定 `channel: meituan-developer`；不发送本应用设备凭据。使用 manual 模式且拒绝所有非 2xx 响应，禁止跟随重定向，无自动重试，仅接受 `code: 0` 和非空字符串 `data`。响应最多256KiB，默认总上游超时110秒。
 
 ## 部署顺序
 
